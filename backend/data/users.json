@@ -5,7 +5,8 @@
     "password_hash": "pbkdf2:sha256:600000$NGdwYIuGaZ4pYTHj$d8be954ab1565ba6c2e120f5f16a7f17486c0978a18b4ff9e2e91f65c4a3e5a0",
     "created_at": "2025-11-01T16:00:14.188115",
     "friend_requests": [
-      "a31c815d-2b15-4afa-a143-45f0e486eb92"
+      "a31c815d-2b15-4afa-a143-45f0e486eb92",
+      "31398cc4-f410-417f-a75f-24b2dba51b46"
     ],
     "friends": [
       "c25424a2-ea54-4f84-a30f-d9cb9190844d",
@@ -76,22 +77,15 @@
     "created_at": "2026-02-23T15:37:32.656396"
   },
   {
-    "id": "5a4942d2-c055-498a-8450-d2c67dd438b4",
-    "username": "zbl123",
-    "password_hash": "scrypt:32768:8:1$XBmDGaXvcUo8jZey$e664cd872681e110f9978100cddf9b03bb773125c90b522ea75423b01a3cb3bb0bd7fbc63103eb0a483dfb3b0890ce4df931c180f03ec9edf79ccf4c8e1f9cae",
-    "created_at": "2026-02-27T13:54:51.059871",
-    "friend_requests": [],
-    "friends": [
-      "37a82c9f-64ea-4956-ba7f-faaf69c9f805"
-    ]
+    "id": "f70308a9-5609-478c-b70c-4c387c674977",
+    "username": "admin",
+    "password_hash": "scrypt:32768:8:1$Zo3Y2OCXywMieJjD$13ebf75fbb026d7e7bdef820ed06331e8447785f6f9392c8f7254fafb3a07b916ebc4d608605eec9315731514a25d0e297f841564c5608afeaabf5c560fa6586",
+    "created_at": "2026-03-04T23:54:01.711375"
   },
   {
-    "id": "37a82c9f-64ea-4956-ba7f-faaf69c9f805",
-    "username": "zbl321",
-    "password_hash": "scrypt:32768:8:1$O3OPrZt9ckAEnjwv$97386f8832e126400fde1423e1f985f82c8b7401f20a5d1bbb990cdd2a4b1e9a0fbdc9fd9a315c3b9adcfa1e60063530b12ea759893b6ae5b5765c947f8a02bc",
-    "created_at": "2026-02-27T14:08:29.270390",
-    "friends": [
-      "5a4942d2-c055-498a-8450-d2c67dd438b4"
-    ]
+    "id": "31398cc4-f410-417f-a75f-24b2dba51b46",
+    "username": "yjj123",
+    "password_hash": "scrypt:32768:8:1$FbCKN6bk58G9EIvL$4729b613cc89dc187fc77374c775140e9d9544af31ea55c35f0817abad2a6b177fa534bd80cf980b7e3c940e5962f0c217dbdd4bec3e4c27968059464bb59381",
+    "created_at": "2026-03-05T12:53:09.090643"
   }
 ]

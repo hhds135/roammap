@@ -1213,7 +1213,7 @@ const handleLike = async () => {
   
   try {
     liking.value = true
-    const response = await fetch(`http://localhost:8000/api/corners/${selectedCorner.value.id}/like`, {
+    const response = await fetch(`http://localhost:5200/api/corners/${selectedCorner.value.id}/like`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1282,7 +1282,7 @@ const handleFavorite = async () => {
   
   try {
     favoriting.value = true
-    const response = await fetch(`http://localhost:8000/api/corners/${selectedCorner.value.id}/favorite`, {
+    const response = await fetch(`http://localhost:5200/api/corners/${selectedCorner.value.id}/favorite`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1324,7 +1324,7 @@ const submitComment = async () => {
   
   try {
     commenting.value = true
-    const response = await fetch(`http://localhost:8000/api/corners/${selectedCorner.value.id}/comment`, {
+    const response = await fetch(`http://localhost:5200/api/corners/${selectedCorner.value.id}/comment`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1361,7 +1361,7 @@ const handleDeleteComment = async (cornerId, commentId) => {
   if (!currentUser.value) return
   
   try {
-    const response = await fetch(`http://localhost:8000/api/corners/${cornerId}/comments/${commentId}`, {
+    const response = await fetch(`http://localhost:5200/api/corners/${cornerId}/comments/${commentId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -1402,13 +1402,16 @@ const editCorner = (corner) => {
   // 设置为编辑模式
   isEditMode.value = true
   currentEditCornerId.value = corner.id
-  
+
+  // 确保tags是数组类型
+  const tags = Array.isArray(corner.tags) ? corner.tags : []
+
   // 填充现有数据
   Object.assign(shareForm, {
     title: corner.title,
     description: corner.description,
     address: corner.address,
-    tags: corner.tags.join(','),
+    tags: tags.join(','),
     latitude: corner.latitude,
     longitude: corner.longitude,
     image: null,
@@ -1416,8 +1419,13 @@ const editCorner = (corner) => {
     specific_friends: corner.specific_friends || [],
     exclude_friends: corner.exclude_friends || []
   })
-  shareFormTags.value = corner.tags
-  selectedFriends.value = corner.specific_friends || []
+  shareFormTags.value = tags
+  // 根据visibility类型恢复selectedFriends
+  if (corner.visibility === 'exclude_friends') {
+    selectedFriends.value = corner.exclude_friends || []
+  } else {
+    selectedFriends.value = corner.specific_friends || []
+  }
   imagePreview.value = corner.image_url
   showShareDialog.value = true
 }

@@ -39,10 +39,12 @@
     ],
     "liked_users": [
       "c25424a2-ea54-4f84-a30f-d9cb9190844d",
-      "4cd1bd4c-5a54-4d4d-98fc-6391bbca71e1"
+      "4cd1bd4c-5a54-4d4d-98fc-6391bbca71e1",
+      "31398cc4-f410-417f-a75f-24b2dba51b46"
     ],
     "favorited_users": [
-      "4cd1bd4c-5a54-4d4d-98fc-6391bbca71e1"
+      "4cd1bd4c-5a54-4d4d-98fc-6391bbca71e1",
+      "31398cc4-f410-417f-a75f-24b2dba51b46"
     ],
     "share_id": "2845330e-9355-4944-b48b-e181395dc10e"
   },
@@ -134,10 +136,8 @@
       }
     ],
     "liked_users": [],
-    "favorited_users": [
-      "5a4942d2-c055-498a-8450-d2c67dd438b4"
-    ],
-    "share_id": "6f0fcc16-f7b5-4062-ba5f-e399a3a698af"
+    "favorited_users": [],
+    "share_id": "69559f7b-13a6-47ea-a203-acfdcd99ca9b"
   },
   {
     "id": "234c9a31-5ab6-45bc-9eec-9405cbb258d1",
@@ -265,7 +265,7 @@
   },
   {
     "id": "5d15c6ad-4c8f-4eb9-a246-bb7697d5cbe3",
-    "share_id": "8d44ba97-14e8-4bf7-b88f-ec8cb45bc5e5",
+    "share_id": "dd823c24-66d3-41a4-8992-f49f1f076721",
     "title": "瞎搞",
     "description": "瞎搞",
     "latitude": 52.50378809585129,
@@ -437,46 +437,21 @@
     ]
   },
   {
-    "id": "1c3625e2-0c84-4fc9-abe9-f3306b18b470",
-    "share_id": "03fa380b-ee17-4f2d-8f1c-e9e847381812",
-    "title": "123",
-    "description": "123",
-    "latitude": 52.48664809680302,
-    "longitude": -1.9026947021484377,
+    "id": "ceb07736-bdfe-411b-94cd-48a5f9e26e0b",
+    "share_id": "7baa6414-036a-40be-a9ff-71e18e7836fd",
+    "title": "gdf",
+    "description": "dfgdgdffd",
+    "latitude": 52.49511441914269,
+    "longitude": -1.988182067871094,
     "address": "",
-    "tags": [
-      "美食"
-    ],
-    "image_url": "/uploads/218427b1089f422a8a99da1dfb634917.png",
-    "user_id": "5a4942d2-c055-498a-8450-d2c67dd438b4",
-    "created_at": "2026-02-27T13:55:59.038008",
+    "tags": [],
+    "image_url": "/uploads/2c66b893bf95427495b9b2517762b400.png",
+    "user_id": "f70308a9-5609-478c-b70c-4c387c674977",
+    "created_at": "2026-03-04T23:54:33.894688",
     "visibility": "public",
     "specific_friends": [],
     "exclude_friends": [],
     "liked_users": [],
-    "favorited_users": [],
-    "comments": []
-  },
-  {
-    "id": "02570cc1-7923-4650-ac2f-a2b5b80524da",
-    "share_id": "92e71087-c949-4436-86f1-1dfb0e24fa87",
-    "title": "123",
-    "description": "123",
-    "latitude": 52.4902020602177,
-    "longitude": -1.9215774536132815,
-    "address": "213",
-    "tags": [
-      "自然"
-    ],
-    "image_url": "/uploads/f287528266c6469783b47758944eaa24.jpg",
-    "user_id": "37a82c9f-64ea-4956-ba7f-faaf69c9f805",
-    "created_at": "2026-02-27T14:09:24.148550",
-    "visibility": "public",
-    "specific_friends": [],
-    "exclude_friends": [],
-    "liked_users": [
-      "5a4942d2-c055-498a-8450-d2c67dd438b4"
-    ],
     "favorited_users": [],
     "comments": []
   }

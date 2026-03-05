@@ -78,13 +78,13 @@ def jwt_optional(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        
+
         # 从请求头获取token
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             if auth_header.startswith('Bearer '):
                 token = auth_header.split(' ')[1]
-        
+
         # 如果有token，则必须验证其有效性
         if token:
             payload = decode_token(token)
@@ -95,14 +95,8 @@ def jwt_optional(f):
                 # 如果token有效，则提取用户信息
                 request.user_id = payload['user_id']
                 request.username = payload['username']
-        else:
-            # 如果没有提供token, 直接阻断请求
-            return jsonify({'error': '缺少认证token'}), 401
+        # 如果没有提供token，继续执行（不设置user_id和username）
 
-
-
-        
-        # 没有提供token时继续执行
         return f(*args, **kwargs)
     return decorated
 
@@ -836,9 +830,8 @@ def get_shared_corner(share_id):
     if not corner:
         return jsonify({'error': '分享链接无效或已过期'}), 404
     
-    # 检查分享权限：只有公开角落或显式允许分享的角落才能被访问
-    is_private = corner.get('privacy', False)
-    # 对于通过分享ID访问的角落，即使是私有的也允许访问，因为分享ID本身就是访问凭证
+    # 检查分享权限：对于通过分享ID访问的角落，允许访问，因为分享ID本身就是访问凭证
+    # 使用visibility字段代替已废弃的privacy字段
 
     # 复制corner对象，避免修改原始数据
     corner_data = corner.copy()
@@ -857,17 +850,21 @@ def generate_share_link(corner_id):
     """为角落生成或重置分享链接"""
     # 从JWT中获取用户信息
     user_id = request.user_id
-    
+
     corners = load_corners()
     corner = next((c for c in corners if c['id'] == corner_id), None)
-    
+
     if not corner:
         return jsonify({'error': '角落不存在'}), 404
-    
+
+    # 权限验证：只有角落所有者才能重置分享链接
+    if corner['user_id'] != user_id:
+        return jsonify({'error': '无权重置此角落的分享链接'}), 403
+
     # 生成新的分享ID
     corner['share_id'] = str(uuid.uuid4())
     save_corners(corners)
-    
+
     # 返回分享信息
     share_link = f"/share/{corner['share_id']}"  # 前端路由
     return jsonify({
@@ -1094,13 +1091,13 @@ def can_access_corner(user_id, corner):
         # 仅好友可见：检查是否是好友
         return is_friend(user_id, corner.get('user_id'))
     elif visibility == 'specific_friends':
-        # 指定好友可见：检查是否在指定列表中
+        # 指定好友可见：检查是否是好友且在指定列表中
         specific_friends = corner.get('specific_friends', [])
-        return user_id in specific_friends
+        return is_friend(user_id, corner.get('user_id')) and user_id in specific_friends
     elif visibility == 'exclude_friends':
-        # 指定好友不可见：检查是否不在排除列表中
+        # 指定好友不可见：检查是否是好友且不在排除列表中
         exclude_friends = corner.get('exclude_friends', [])
-        return user_id not in exclude_friends
+        return is_friend(user_id, corner.get('user_id')) and user_id not in exclude_friends
     else:
         # 默认：公开
         return True
@@ -1142,5 +1139,5 @@ if __name__ == '__main__':
     init_data_files()
     print("🎨 城事绘图后端服务启动中...")
     print("📁 数据存储：JSON 文件")
-    print("🌐 服务地址：http://localhost:8000")
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    print("🌐 服务地址：http://localhost:5200")
+    app.run(debug=True, host='0.0.0.0', port=5200)

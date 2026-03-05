@@ -372,9 +372,9 @@ const scrollToSearch = () => {
 const viewFriendCorners = async (friendId, friendName) => {
   loadingFriendCorners.value = friendId
   currentFriend.value = { id: friendId, username: friendName }
-  
+
   try {
-    const response = await axios.get(`/api/friends/${friendId}/corners`)
+    const response = await axios.get(`/api/friends/${friendId}/corners`, getAuthConfig())
     friendCorners.value = response.data.corners
     showFriendCorners.value = true
     ElMessage.success(`已加载 ${friendCorners.value.length} 个角落`)
