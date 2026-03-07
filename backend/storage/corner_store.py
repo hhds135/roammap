@@ -1,0 +1,164 @@
+"""
+Corner storage module.
+
+Handles all corner (location) related database operations including:
+- Corner CRUD operations
+- Geospatial queries
+- Corner searches
+"""
+
+from typing import Any, Dict, List, Optional
+from bson import ObjectId
+from pymongo.errors import PyMongoError
+
+from .base_store import BaseStore
+
+
+class CornerStore(BaseStore):
+    """
+    Storage operations for the corners collection.
+    """
+    
+    collection_name = "corners"
+    
+    def create_corner(self, name: str, description: str,
+                      latitude: float, longitude: float,
+                      address: str) -> ObjectId:
+        """
+        Create a new corner (location).
+        
+        Args:
+            name: Unique corner name
+            description: Corner description
+            latitude: Latitude (-90 to 90)
+            longitude: Longitude (-180 to 180)
+            address: Human-readable address
+            
+        Returns:
+            ObjectId of the created corner
+            
+        Raises:
+            PyMongoError: If name already exists
+        """
+        document = {
+            'name': name,
+            'description': description,
+            'location': {
+                'type': 'Point',
+                'coordinates': [longitude, latitude]  # GeoJSON format: [lng, lat]
+            },
+            'address': address
+        }
+        
+        return self.create(document)
+    
+    def get_corner_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a corner by name.
+        
+        Args:
+            name: Corner name
+            
+        Returns:
+            Corner document or None
+        """
+        return self.find_one({'name': name})
+    
+    def get_corner_by_id(self, corner_id: ObjectId) -> Optional[Dict[str, Any]]:
+        """
+        Get a corner by ObjectId.
+        
+        Args:
+            corner_id: Corner's ObjectId
+            
+        Returns:
+            Corner document or None
+        """
+        return self.get_by_id(corner_id)
+    
+    def update_corner(self, corner_id: ObjectId, updates: Dict[str, Any]) -> bool:
+        """
+        Update corner fields.
+        
+        Args:
+            corner_id: Corner's ObjectId
+            updates: Fields to update
+            
+        Returns:
+            True if updated successfully
+        """
+        return self.update(corner_id, updates)
+    
+    def delete_corner(self, corner_id: ObjectId) -> bool:
+        """
+        Delete a corner.
+        
+        Args:
+            corner_id: Corner's ObjectId
+            
+        Returns:
+            True if deleted successfully
+        """
+        return self.delete(corner_id)
+    
+    def get_nearby_corners(self, latitude: float, longitude: float,
+                           max_distance: int = 10000,
+                           limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Find corners near a location.
+        
+        Args:
+            latitude: Search center latitude
+            longitude: Search center longitude
+            max_distance: Maximum distance in meters (default: 10km)
+            limit: Maximum number of results
+            
+        Returns:
+            List of nearby corners
+        """
+        query = {
+            'location': {
+                '$near': {
+                    '$geometry': {
+                        'type': 'Point',
+                        'coordinates': [longitude, latitude]
+                    },
+                    '$maxDistance': max_distance
+                }
+            }
+        }
+        
+        return self.find(query, limit=limit)
+    
+    def search_corners_by_name(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Search corners by name (case-insensitive regex).
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results
+            
+        Returns:
+            List of matching corners
+        """
+        return self.find(
+            {'name': {'$regex': query, '$options': 'i'}},
+            limit=limit
+        )
+    
+    def get_all_corners(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all corners.
+        
+        Args:
+            limit: Maximum number of results
+            
+        Returns:
+            List of corners
+        """
+        return self.find({}, limit=limit)
+    
+    def create_indexes(self):
+        """Create indexes for the corners collection."""
+        self.collection.create_index('name', unique=True)
+        self.collection.create_index([('location', '2dsphere')])
