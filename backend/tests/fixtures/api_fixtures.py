@@ -2,6 +2,7 @@
 import pytest
 import json
 
+
 class APIClient:
     """Helper class for making API requests with automatic JSON handling."""
 
@@ -127,7 +128,7 @@ class APIClient:
         response = self.client.delete(endpoint, headers=headers)
         try:
             response_data = response.get_json()
-        except:
+        except Exception:
             response_data = None
         return response, response_data
 
@@ -135,10 +136,13 @@ class APIClient:
         """
         Make a POST request with multipart/form-data (for file uploads).
 
+        For Flask 3.x, we need to manually create the multipart form data
+        and set the content type header.
+
         Args:
             endpoint: API endpoint path
             data: Dictionary of form data fields
-            files: Dictionary of files to upload (e.g., {'file': (filename, file_obj)})
+            files: Dictionary of files to upload (e.g., {'file': FileStorage object})
             auth_token: Optional JWT token for authentication
             extra_headers: Optional dict of additional headers
 
@@ -146,21 +150,38 @@ class APIClient:
             tuple: (response, data) where response is the Flask response object
                    and data is the parsed JSON response
         """
+        # Import here to avoid circular import
+        from tests.conftest import make_multipart_form_data
+
         headers = {}
         if extra_headers:
             headers.update(extra_headers)
         if auth_token:
             headers['Authorization'] = f'Bearer {auth_token}'
 
+        # For Flask 3.x, manually create multipart form data
+        # Extract the file from the files dict
+        file_obj = None
+        file_field_name = 'file'
+        if files:
+            # Get the first (and usually only) file
+            file_field_name, file_obj = list(files.items())[0]
+
+        # Create multipart form data
+        body, content_type = make_multipart_form_data(data, file_obj, file_field_name)
+        headers['Content-Type'] = content_type
+
         response = self.client.post(
             endpoint,
-            data=data,
-            files=files,
-            headers=headers,
-            content_type='multipart/form-data'
+            data=body,
+            headers=headers
         )
-        response_data = response.get_json()
+        try:
+            response_data = response.get_json()
+        except Exception:
+            response_data = None
         return response, response_data
+
 
 @pytest.fixture
 def api_client(client):
@@ -174,6 +195,7 @@ def api_client(client):
         APIClient: Initialized API client instance
     """
     return APIClient(client)
+
 
 @pytest.fixture
 def clear_data(api_client):

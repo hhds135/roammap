@@ -1,69 +1,27 @@
-# 城事绘图 (Urban Canvas)
+# Urban Canvas
 
-一个基于 Web 的交互式地图应用，允许用户以"分享角落"的形式在地图上标记特殊地点。
+Urban Canvas is an app that allows its users to post and create locations (also called "corners") on a map based on geographic coordinates using FLask API. It combines aspects of social networking with user-generated content, allowing a user to share their created corner with the community and discover new places through their friends, family, or other sources.
 
-## 项目特色
+The Urban Canvas application consists of a Flask API backend (to provide user authentication, management, and location data) and a Vue 3 front end with an interactive mapping interface using Leaflet. The capability to register an account, send and receive friend requests, and create corners will be part of this app. Users also have an option of setting the visibility of their created corners (e.g. public, private, or friends only). Corners can contain media (in the form of images, videos, etc.) so users will be able to like, comment, save, or share their content to others.
 
-- 🗺️ **交互式地图展示**：全屏动态地图界面
-- 📍 **用户分享功能**：标记地点，上传照片和故事
-- 🔍 **社区发现体验**：探索他人分享的地点
-- 🏷️ **标签筛选系统**：主题式地点探索
-- 🔗 **链接分享机制**：每个角落都有唯一URL
-- 👤 **基础用户系统**：简单的注册登录功能
+To create a lightweight solution without having users deploy their own database, the Urban Canvas platform utilizes json files for user data storage. The backend of the application supports the use of JWT (JSON Web Token) for authentication and has a full set of HTTP RESTful API endpoints available for each of the following functions: user management (e.g. creating, updating, deleting, retrieving user information), managing user created corners, managing user authored posts, managing user created comments, managing user likes, managing user favorites, and managing user friend relationships. In addition, the application contains a means of backing up the user data and corner data by generating a timestamp and saving user/corner data to a backup.
 
-## 技术栈
+The Vue 3 front end is supported by the Vue Router for site navigation, Element Plus for UI components, and Leaflet for interactive map displays. This allows the user to interact with various features as they check out the map, manage social contacts, and find new ways to engage with content. The Application is installed using Vite, which allows rapid development and optimized build output for production.
 
-- **前端**：Vue 3 + Element Plus + Leaflet
-- **后端**：Python Flask
-- **数据存储**：JSON 文件（简化版本）
-- **地图服务**：OpenStreetMap + Leaflet
+  Prerequisites and Setup:
 
-## 项目结构
+   - Backend Requirements: Python 3.12+ is required for the backend
+   - Frontend Requirements: Node.js is required for the frontend
 
-```
-urban_canvas/
-├── backend/           # Flask 后端 API
-│   ├── app.py        # 主应用文件
-│   ├── data/         # JSON 数据文件
-│   └── uploads/      # 上传的图片
-├── frontend/         # Vue 前端应用
-└── README.md
-```
+  Backend Setup:
 
-## 快速开始
+   - Navigate to the backend directory in a terminal
+   - Run python app.py to start the Flask server
+   - The backend API will be available at http://localhost:5200
 
-### 后端启动
+  Frontend Setup:
 
-```bash
-cd backend
-pip install flask flask-cors
-python app.py
-```
-
-### 前端启动
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## 功能说明
-
-### 核心功能
-
-1. **交互式地图**：基于 Leaflet 的全屏地图界面
-2. **角落分享**：用户可标记地点并分享照片、故事
-3. **标签系统**：支持自定义标签和筛选功能
-4. **社区探索**：浏览和发现其他用户分享的地点
-5. **用户系统**：简单的注册、登录功能
-
-### 数据存储
-
-- `users.json`：用户账户信息
-- `corners.json`：角落分享数据
-- `uploads/`：用户上传的图片文件
-
-## 开发说明
-
-这是一个简化版本的实现，使用JSON文件存储数据，适合快速原型开发和演示。
+✦  - Navigate to the frontend directory in a separate terminal
+   - Install dependencies with npm install
+   - Run npm run dev to start the development server
+   - The frontend development server typically runs at http://localhost:5173

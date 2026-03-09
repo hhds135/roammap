@@ -10,6 +10,7 @@ def register_blueprints(app: Flask):
         app: Flask application instance
     """
     from . import auth, corners, likes, favorites, comments, friends, sharing, health
+    from . import posts, media, users
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(corners.bp)
@@ -19,3 +20,6 @@ def register_blueprints(app: Flask):
     app.register_blueprint(friends.bp)
     app.register_blueprint(sharing.bp)
     app.register_blueprint(health.bp)
+    app.register_blueprint(posts.bp)
+    app.register_blueprint(media.bp)
+    app.register_blueprint(users.bp)

@@ -19,10 +19,11 @@ def sample_token():
     Returns:
         str: A valid JWT token with test user data
     """
+    from bson import ObjectId
     payload = {
         'exp': datetime.utcnow() + timedelta(days=1),
         'iat': datetime.utcnow(),
-        'user_id': 'test-user-123',
+        'user_id': str(ObjectId()),
         'username': 'testuser'
     }
     return jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
@@ -57,14 +58,13 @@ def registered_user(client):
     unique_id = str(uuid.uuid4())[:8]
     user_input = {
         'username': f'testuser_{unique_id}',
-        'password': 'password123',
-        'email': f'testuser_{unique_id}@example.com'
+        'password': 'password123'
     }
 
     # Register the user
     response = client.post('/api/auth/register', json=user_input)
     response_data = response.get_json()
-    
+
     # Get the user data from server response (includes id)
     user_dict = response_data.get('user', {})
 
@@ -97,14 +97,13 @@ def multiple_registered_users(client):
     for i in range(3):
         user_input = {
             'username': f'user{i+1}_{unique_id}',
-            'password': 'password123',
-            'email': f'user{i+1}_{unique_id}@example.com'
+            'password': 'password123'
         }
 
         # Register the user
         response = client.post('/api/auth/register', json=user_input)
         response_data = response.get_json()
-        
+
         # Get the user data from server response (includes id)
         user_dict = response_data.get('user', {})
 

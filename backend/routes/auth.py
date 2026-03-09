@@ -1,13 +1,24 @@
 """Authentication endpoints: register and login."""
 from flask import Blueprint, request, jsonify
 from datetime import datetime
-import uuid
+from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from models import find_user_by_username, load_users, save_users
-from utils import generate_token, jwt_required
+from storage.user_store import UserStore
+from storage.connection import MongoDBConnection, get_db
+from utils import generate_token
 
 bp = Blueprint('auth', __name__)
+
+# Initialize MongoDB connection
+try:
+    if get_db() is None:
+        conn = MongoDBConnection()
+        conn.connect()
+except Exception:
+    pass
+
+user_store = UserStore()
 
 
 @bp.route('/api/auth/register', methods=['POST'])
@@ -28,22 +39,28 @@ def register():
         return jsonify({'error': 'Password must be at least 6 characters'}), 400
 
     # Check if username already exists
-    if find_user_by_username(username):
+    existing_user = user_store.get_user_by_username(username)
+    if existing_user:
         return jsonify({'error': 'Username already exists'}), 409
 
-    # Create new user
-    users = load_users()
-    new_user = {
-        'id': str(uuid.uuid4()),
+    # Create new user in MongoDB
+    try:
+        password_hash = generate_password_hash(password)
+        user_id = user_store.create_user(
+            username=username,
+            password_hash=password_hash,
+            interest_tags=data.get('interest_tags', [])
+        )
+    except Exception as e:
+        return jsonify({'error': f'Failed to create user: {str(e)}'}), 500
+
+    # Return user info (convert ObjectId to string)
+    user_info = {
+        'id': str(user_id),
         'username': username,
-        'password_hash': generate_password_hash(password),
-        'created_at': datetime.now().isoformat()
+        'interest_tags': data.get('interest_tags', [])
     }
-
-    users.append(new_user)
-    save_users(users)
-
-    user_info = {k: v for k, v in new_user.items() if k != 'password_hash'}
+    
     return jsonify({'message': 'Registration successful', 'user': user_info}), 201
 
 
@@ -58,13 +75,19 @@ def login():
     username = data['username'].strip()
     password = data['password']
 
-    user = find_user_by_username(username)
+    user = user_store.get_user_by_username(username)
     if not user or not check_password_hash(user['password_hash'], password):
         return jsonify({'error': 'Invalid username or password'}), 401
 
-    token = generate_token(user['id'], user['username'])
+    # Generate JWT token with ObjectId as string
+    token = generate_token(str(user['_id']), user['username'])
 
-    user_info = {k: v for k, v in user.items() if k != 'password_hash'}
+    user_info = {
+        'id': str(user['_id']),
+        'username': user['username'],
+        'interest_tags': user.get('interest_tags', [])
+    }
+    
     return jsonify({
         'message': 'Login successful',
         'user': user_info,

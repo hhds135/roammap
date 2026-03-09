@@ -19,9 +19,9 @@ class PostStore(BaseStore):
     """
     Storage operations for the posts collection.
     """
-    
+
     collection_name = "posts"
-    
+
     def create_post(self, user_id: ObjectId, title: str, description: str,
                     corner_ids: Optional[List[ObjectId]] = None,
                     media_type: str = "image",
