@@ -1,21 +1,10 @@
 """Pytest configuration and fixtures for the test suite."""
 import pytest
-import os
-import shutil
 import sys
-from datetime import datetime
-
-# Absolute paths to data files
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKEND_DIR = os.path.dirname(BASE_DIR)
-DATA_DIR = os.path.join(BACKEND_DIR, 'data')
-BACKUPS_DIR = os.path.join(BACKEND_DIR, 'backups')
-
-USERS_FILE = os.path.join(DATA_DIR, 'users.json')
-CORNERS_FILE = os.path.join(DATA_DIR, 'corners.json')
 
 # Add backend directory to path to import app
-sys.path.insert(0, BACKEND_DIR)
+BASE_DIR = sys.path[0] if '__file__' not in locals() else '/Volumes/extra/ueassignments/zj0304-01/project/backend'
+sys.path.insert(0, BASE_DIR)
 from app import app as flask_app
 
 # Import fixtures from fixtures directory
@@ -156,94 +145,6 @@ def multipart_form_data():
     return make_multipart_form_data
 
 
-@pytest.fixture(scope='session', autouse=True)
-def backup_before_tests():
-    """
-    Session-scoped fixture that automatically backs up data files before running tests.
-
-    This fixture runs automatically before all tests:
-    - Creates backups/ directory if it doesn't exist
-    - Backs up data/users.json and data/corners.json with timestamp
-    - Creates empty files if they don't exist
-    - Prints backup confirmation
-
-    Yields:
-        None: Control returns to tests after backup is complete
-    """
-    # Create backups directory if it doesn't exist
-    if not os.path.exists(BACKUPS_DIR):
-        os.makedirs(BACKUPS_DIR)
-        print(f"\n[BACKUP] Created backups directory: {BACKUPS_DIR}")
-
-    # Generate timestamp for backup files
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    # Backup users.json
-    if os.path.exists(USERS_FILE):
-        users_backup = os.path.join(BACKUPS_DIR, f'users_{timestamp}.json')
-        shutil.copy2(USERS_FILE, users_backup)
-        print(f"[BACKUP] Backed up users.json -> {users_backup}")
-    else:
-        # Create empty users.json if it doesn't exist
-        os.makedirs(DATA_DIR, exist_ok=True)
-        with open(USERS_FILE, 'w') as f:
-            f.write('[]')
-        print(f"[BACKUP] Created empty users.json: {USERS_FILE}")
-
-    # Backup corners.json
-    if os.path.exists(CORNERS_FILE):
-        corners_backup = os.path.join(BACKUPS_DIR, f'corners_{timestamp}.json')
-        shutil.copy2(CORNERS_FILE, corners_backup)
-        print(f"[BACKUP] Backed up corners.json -> {corners_backup}")
-    else:
-        # Create empty corners.json if it doesn't exist
-        os.makedirs(DATA_DIR, exist_ok=True)
-        with open(CORNERS_FILE, 'w') as f:
-            f.write('[]')
-        print(f"[BACKUP] Created empty corners.json: {CORNERS_FILE}")
-
-    print(f"[BACKUP] Test data backup completed at {datetime.now()}\n")
-
-    # Yield control to tests
-    yield
-
-    # Cleanup after all tests complete (optional)
-    print(f"\n[BACKUP] Test session completed at {datetime.now()}")
-
-
-@pytest.fixture
-def clean_test_data():
-    """
-    Function-scoped fixture for optional test cleanup.
-
-    This fixture can be used in tests that want to clean up data
-    after each test. It's not automatically used - tests must
-    explicitly request it.
-
-    Example usage:
-        def test_something(clean_test_data):
-            # perform test
-            clean_test_data()
-
-    Returns:
-        function: Function that clears test data when called
-    """
-    def _clean():
-        """
-        Clear all test data by resetting data files to empty arrays.
-
-        Returns:
-            None
-        """
-        with open(USERS_FILE, 'w') as f:
-            f.write('[]')
-
-        with open(CORNERS_FILE, 'w') as f:
-            f.write('[]')
-
-    return _clean
-
-
 def pytest_configure(config):
     """
     Pytest hook for configuration.
@@ -263,3 +164,18 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "unit: marks tests as unit tests"
     )
+
+
+# Storage fixtures
+@pytest.fixture
+def corner_store():
+    """Corner store fixture for tests."""
+    from storage.corner_store import CornerStore
+    return CornerStore()
+
+
+@pytest.fixture
+def user_store():
+    """User store fixture for tests."""
+    from storage.user_store import UserStore
+    return UserStore()

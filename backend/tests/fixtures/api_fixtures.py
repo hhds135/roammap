@@ -132,6 +132,32 @@ class APIClient:
             response_data = None
         return response, response_data
 
+    def post(self, endpoint, auth_token=None, extra_headers=None):
+        """
+        Make a POST request without JSON body.
+
+        Args:
+            endpoint: API endpoint path
+            auth_token: Optional JWT token for authentication
+            extra_headers: Optional dict of additional headers
+
+        Returns:
+            tuple: (response, data) where response is the Flask response object
+                   and data is the parsed JSON response
+        """
+        headers = {}
+        if extra_headers:
+            headers.update(extra_headers)
+        if auth_token:
+            headers['Authorization'] = f'Bearer {auth_token}'
+
+        response = self.client.post(endpoint, headers=headers)
+        try:
+            response_data = response.get_json()
+        except Exception:
+            response_data = None
+        return response, response_data
+
     def post_multipart(self, endpoint, data, files, auth_token=None, extra_headers=None):
         """
         Make a POST request with multipart/form-data (for file uploads).

@@ -31,9 +31,14 @@ TEST_MONGO_URI = "mongodb://192.168.0.222:27017/"
 TEST_DB_NAME = "conner_db_test"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="module", autouse=True)
 def db_connection():
     """Initialize database connection for tests."""
+    # Reset singleton instance for testing
+    MongoDBConnection._instance = None
+    MongoDBConnection._client = None
+    MongoDBConnection._db = None
+    
     init_storage(TEST_MONGO_URI, TEST_DB_NAME)
     yield
     # Cleanup: Drop test database after all tests
@@ -42,6 +47,11 @@ def db_connection():
         client = conn._client
         client.drop_database(TEST_DB_NAME)
         conn.close()
+    
+    # Reset singleton after tests
+    MongoDBConnection._instance = None
+    MongoDBConnection._client = None
+    MongoDBConnection._db = None
 
 
 @pytest.fixture

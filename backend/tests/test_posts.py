@@ -4,6 +4,8 @@ import io
 from bson import ObjectId
 from werkzeug.datastructures import FileStorage
 
+import uuid
+from storage.corner_store import CornerStore
 
 def create_test_image_file(filename='test.png'):
     """Create a test image file as FileStorage."""
@@ -838,3 +840,897 @@ class TestUserInterestTags:
 
         assert response.status_code == 400
         assert 'exceeds maximum length' in data['error']
+
+
+# ==================== Post Likes Tests ====================
+
+class TestPostLikes:
+    """Test post like functionality."""
+
+    def test_like_post_success(self, api_client, registered_user):
+        """Test liking a post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Like post
+        response, data = api_client.post(f'/api/posts/{post_id}/like', auth_token=token)
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert data['data']['is_liked'] is True
+        assert data['data']['likes_count'] == 1
+
+    def test_unlike_post_success(self, api_client, registered_user):
+        """Test unliking a post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Like post
+        api_client.post(f'/api/posts/{post_id}/like', auth_token=token)
+
+        # Unlike post
+        response, data = api_client.post(f'/api/posts/{post_id}/like', auth_token=token)
+        assert response.status_code == 200
+        assert data['data']['is_liked'] is False
+        assert data['data']['likes_count'] == 0
+
+    def test_like_post_without_auth_fails(self, api_client, registered_user):
+        """Test that liking without auth fails."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Try to like without auth
+        response, data = api_client.post(f'/api/posts/{post_id}/like')
+        assert response.status_code == 401
+
+    def test_like_private_post_as_creator(self, api_client, registered_user):
+        """Test liking own private post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create private post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Private Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'private'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Like own post
+        response, data = api_client.post(f'/api/posts/{post_id}/like', auth_token=token)
+        assert response.status_code == 200
+        assert data['data']['is_liked'] is True
+
+    def test_like_private_post_as_other_user_fails(self, api_client, multiple_registered_users):
+        """Test that liking other user's private post fails."""
+        user1, token1 = multiple_registered_users[0]
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token1
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create private post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Private Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'private'
+        }, auth_token=token1)
+
+        post_id = post_data['data']['_id']
+
+        # User 2 tries to like
+        user2, token2 = multiple_registered_users[1]
+        response, data = api_client.post(f'/api/posts/{post_id}/like', auth_token=token2)
+        assert response.status_code == 403
+
+    def test_get_post_likes(self, api_client, registered_user):
+        """Test getting post likes."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Like post
+        api_client.post(f'/api/posts/{post_id}/like', auth_token=token)
+
+        # Get likes
+        response, data = api_client.get_json(f'/api/posts/{post_id}/likes')
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert data['data']['total'] == 1
+
+
+# ==================== Post Comments Tests ====================
+
+class TestPostComments:
+    """Test post comment functionality."""
+
+    def test_add_comment_success(self, api_client, registered_user):
+        """Test adding a comment to a post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Add comment
+        response, data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        }, auth_token=token)
+
+        assert response.status_code == 201
+        assert data['success'] is True
+        assert data['data']['content'] == 'Test comment'
+
+    def test_add_comment_without_auth_fails(self, api_client, registered_user):
+        """Test that adding comment without auth fails."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Try to add comment without auth
+        response, data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        })
+        assert response.status_code == 401
+
+    def test_add_empty_comment_fails(self, api_client, registered_user):
+        """Test that adding empty comment fails."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Try to add empty comment
+        response, data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': ''
+        }, auth_token=token)
+        assert response.status_code == 400
+
+    def test_get_post_comments(self, api_client, registered_user):
+        """Test getting post comments."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Add comment
+        api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        }, auth_token=token)
+
+        # Get comments
+        response, data = api_client.get_json(f'/api/posts/{post_id}/comments')
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert data['data']['total'] == 1
+
+    def test_update_comment_success(self, api_client, registered_user):
+        """Test updating own comment."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Add comment
+        _, comment_data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        }, auth_token=token)
+
+        comment_id = comment_data['data']['_id']
+
+        # Update comment
+        response, data = api_client.put_json(f'/api/posts/{post_id}/comments/{comment_id}', {
+            'content': 'Updated comment'
+        }, auth_token=token)
+
+        assert response.status_code == 200
+        assert data['data']['content'] == 'Updated comment'
+
+    def test_update_other_user_comment_fails(self, api_client, multiple_registered_users):
+        """Test that updating other user's comment fails."""
+        user1, token1 = multiple_registered_users[0]
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token1
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token1)
+
+        post_id = post_data['data']['_id']
+
+        # Add comment
+        _, comment_data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        }, auth_token=token1)
+
+        comment_id = comment_data['data']['_id']
+
+        # User 2 tries to update
+        user2, token2 = multiple_registered_users[1]
+        response, data = api_client.put_json(f'/api/posts/{post_id}/comments/{comment_id}', {
+            'content': 'Updated comment'
+        }, auth_token=token2)
+        assert response.status_code == 403
+
+    def test_delete_comment_success(self, api_client, registered_user):
+        """Test deleting own comment."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Add comment
+        _, comment_data = api_client.post_json(f'/api/posts/{post_id}/comments', {
+            'content': 'Test comment'
+        }, auth_token=token)
+
+        comment_id = comment_data['data']['_id']
+
+        # Delete comment
+        response, data = api_client.delete(f'/api/posts/{post_id}/comments/{comment_id}', auth_token=token)
+        assert response.status_code == 200
+        assert data['success'] is True
+
+
+# ==================== Post Favorites Tests ====================
+
+class TestPostFavorites:
+    """Test post favorite functionality."""
+
+    def test_favorite_post_success(self, api_client, registered_user):
+        """Test favoriting a post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Favorite post
+        response, data = api_client.post(f'/api/posts/{post_id}/favorite', auth_token=token)
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert data['data']['is_favorited'] is True
+        assert data['data']['favorites_count'] == 1
+
+    def test_unfavorite_post_success(self, api_client, registered_user):
+        """Test unfavoriting a post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Favorite post
+        api_client.post(f'/api/posts/{post_id}/favorite', auth_token=token)
+
+        # Unfavorite post
+        response, data = api_client.post(f'/api/posts/{post_id}/favorite', auth_token=token)
+        assert response.status_code == 200
+        assert data['data']['is_favorited'] is False
+        assert data['data']['favorites_count'] == 0
+
+    def test_favorite_post_without_auth_fails(self, api_client, registered_user):
+        """Test that favoriting without auth fails."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Try to favorite without auth
+        response, data = api_client.post(f'/api/posts/{post_id}/favorite')
+        assert response.status_code == 401
+
+    def test_get_post_favorites(self, api_client, registered_user):
+        """Test getting post favorites."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Test Post',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Favorite post
+        api_client.post(f'/api/posts/{post_id}/favorite', auth_token=token)
+
+        # Get favorites
+        response, data = api_client.get_json(f'/api/posts/{post_id}/favorites')
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert data['data']['total'] == 1
+
+
+# ==================== Followers Visibility Tests ====================
+
+class TestFollowersVisibility:
+    """Test followers-only visibility."""
+
+    def test_get_followers_only_post_as_follower(self, api_client, multiple_registered_users, user_store):
+        """Test that followers can view followers-only posts."""
+        user1, token1 = multiple_registered_users[0]
+        user2, token2 = multiple_registered_users[1]
+
+        # User 2 follows User 1 using user_store
+        user_store.follow(ObjectId(user2['id']), ObjectId(user1['id']))
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token1
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create followers-only post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Followers Only',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'followers'
+        }, auth_token=token1)
+
+        post_id = post_data['data']['_id']
+
+        # User 2 can view post
+        response, data = api_client.get_json(f'/api/posts/{post_id}', auth_token=token2)
+        assert response.status_code == 200
+        assert data['success'] is True
+
+    def test_get_followers_only_post_as_non_follower_fails(self, api_client, multiple_registered_users):
+        """Test that non-followers cannot view followers-only posts."""
+        user1, token1 = multiple_registered_users[0]
+        user3, token3 = multiple_registered_users[2]
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token1
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create followers-only post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Followers Only',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'followers'
+        }, auth_token=token1)
+
+        post_id = post_data['data']['_id']
+
+        # User 3 does not follow User 1
+        response, data = api_client.get_json(f'/api/posts/{post_id}', auth_token=token3)
+        assert response.status_code == 403
+
+    def test_get_followers_only_post_as_creator(self, api_client, registered_user):
+        """Test that creator can view own followers-only post."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create followers-only post
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Followers Only',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'visibility': 'followers'
+        }, auth_token=token)
+
+        post_id = post_data['data']['_id']
+
+        # Creator can view
+        response, data = api_client.get_json(f'/api/posts/{post_id}', auth_token=token)
+        assert response.status_code == 200
+
+
+# ==================== Corner Association Tests ====================
+
+class TestCornerAssociation:
+    """Test post-corner associations."""
+
+    def test_create_post_with_corners(self, api_client, registered_user, corner_store):
+        """Test creating a post with corner references."""
+        user_dict, token = registered_user
+
+        # Create corners using store with unique names
+        unique_id = str(uuid.uuid4())[:8]
+        corner1_id = corner_store.create_corner(
+            name=f'Corner 1_{unique_id}',
+            description='Test corner',
+            latitude=31.2304,
+            longitude=121.4737,
+            address='Test address 1'
+        )
+
+        corner2_id = corner_store.create_corner(
+            name=f'Corner 2_{unique_id}',
+            description='Test corner',
+            latitude=31.2404,
+            longitude=121.4837,
+            address='Test address 2'
+        )
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post with corners
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Post with Corners',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner1_id), str(corner2_id)],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert len(post_data['data']['corner_ids']) == 2
+        assert len(post_data['data']['corners']) == 2
+
+    def test_create_post_with_nonexistent_corner_fails(self, api_client, registered_user):
+        """Test that creating post with nonexistent corner fails."""
+        user_dict, token = registered_user
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Try to create post with nonexistent corner
+        response, data = api_client.post_json('/api/posts', {
+            'title': 'Post with Corners',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(ObjectId())],
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert response.status_code == 404
+
+# ==================== Route Functionality Tests ====================
+
+class TestRouteFunctionality:
+    """Test route functionality in posts."""
+
+    def test_create_post_with_route(self, api_client, registered_user, corner_store):
+        """Test creating a post with a route."""
+        user_dict, token = registered_user
+
+        # Create corners using store with unique names
+        unique_id = str(uuid.uuid4())[:8]
+        corner1_id = corner_store.create_corner(
+            name=f'Corner 1_{unique_id}',
+            description='Test corner',
+            latitude=31.2304,
+            longitude=121.4737,
+            address='Test address 1'
+        )
+
+        corner2_id = corner_store.create_corner(
+            name=f'Corner 2_{unique_id}',
+            description='Test corner',
+            latitude=31.2404,
+            longitude=121.4837,
+            address='Test address 2'
+        )
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Create post with route
+        _, post_data = api_client.post_json('/api/posts', {
+            'title': 'Post with Route',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner1_id), str(corner2_id)],
+            'route': {
+                'route_name': 'Test Route',
+                'corner_ids': [str(corner1_id), str(corner2_id)]
+            },
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert 'route' in post_data['data']
+        assert post_data['data']['route']['route_name'] == 'Test Route'
+        assert len(post_data['data']['route']['corner_ids']) == 2
+
+    def test_create_post_with_invalid_route_corner_fails(self, api_client, registered_user, corner_store):
+        """Test that creating post with route corner not in corner_ids fails."""
+        user_dict, token = registered_user
+
+        # Create corner with unique name
+        unique_id = str(uuid.uuid4())[:8]
+        corner1_id = corner_store.create_corner(
+            name=f'Corner 1_{unique_id}',
+            description='Test corner',
+            latitude=31.2304,
+            longitude=121.4737,
+            address='Test address 1'
+        )
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Try to create post with route corner not in corner_ids
+        response, data = api_client.post_json('/api/posts', {
+            'title': 'Post with Route',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner1_id)],
+            'route': {
+                'route_name': 'Test Route',
+                'corner_ids': [str(corner1_id), str(ObjectId())]
+            },
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert response.status_code == 400
+
+    def test_create_post_with_route_missing_name_fails(self, api_client, registered_user, corner_store):
+        """Test that creating post with route missing name fails."""
+        user_dict, token = registered_user
+
+        # Create corner with unique name
+        unique_id = str(uuid.uuid4())[:8]
+        corner1_id = corner_store.create_corner(
+            name=f'Corner 1_{unique_id}',
+            description='Test corner',
+            latitude=31.2304,
+            longitude=121.4737,
+            address='Test address 1'
+        )
+
+        # Upload image
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Try to create post with route missing name
+        response, data = api_client.post_json('/api/posts', {
+            'title': 'Post with Route',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner1_id)],
+            'route': {
+                'corner_ids': [str(corner1_id)]
+            },
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert response.status_code == 400
