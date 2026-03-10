@@ -3,6 +3,7 @@ import jwt
 from datetime import datetime
 from functools import wraps
 from flask import request, jsonify
+from bson import ObjectId
 from config import Config
 
 
@@ -146,8 +147,12 @@ def is_following_user(follower_id: str, following_id: str) -> bool:
         follower_obj = ObjectId(follower_id)
         following_obj = ObjectId(following_id)
         user_store = _get_user_store()
-        return user_store.is_following(follower_obj, following_obj)
-    except Exception:
+        result = user_store.is_following(follower_obj, following_obj)
+        return result
+    except Exception as e:
+        # Log the exception for debugging
+        import logging
+        logging.error(f"is_following_user error: {e}", exc_info=True)
         return False
 
 

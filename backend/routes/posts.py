@@ -167,6 +167,10 @@ def expand_post_data(post):
     expanded['corner_ids'] = [str(cid) for cid in post.get('corner_ids', [])]
     expanded['media_files'] = [str(fid) for fid in post.get('media_files', [])]
     
+    # Convert route corner_ids to strings
+    if 'route' in expanded and expanded['route'] and 'corner_ids' in expanded['route']:
+        expanded['route']['corner_ids'] = [str(cid) for cid in expanded['route']['corner_ids']]
+    
     return expanded
 
 
@@ -217,6 +221,11 @@ def create_post():
     # Validate route if provided
     route = data.get('route')
     if route:
+        # Validate route_name
+        route_name = route.get('route_name')
+        if not route_name or not isinstance(route_name, str) or not route_name.strip():
+            return jsonify({'error': 'route.route_name is required and must be a non-empty string'}), 400
+
         route_corner_ids = route.get('corner_ids', [])
         if not isinstance(route_corner_ids, list):
             return jsonify({'error': 'route.corner_ids must be an array'}), 400
