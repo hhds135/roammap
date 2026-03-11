@@ -1,276 +1,695 @@
-"""Corner management endpoints."""
-import os
-import uuid
+"""Corner management endpoints - 地点管理."""
 from datetime import datetime
-from flask import Blueprint, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
+from flask import Blueprint, request, jsonify
+from bson import ObjectId
 
-from models import (
-    load_corners, save_corners, find_user_by_id,
-    can_access_corner, is_friend
-)
-from utils import jwt_required, jwt_optional, allowed_file
+from storage.corner_store import CornerStore
+from storage.post_store import PostStore
+from storage.user_store import UserStore
+from storage.connection import MongoDBConnection, get_db
+from utils import jwt_required, jwt_optional, check_post_visibility, is_following_user
 from config import Config
 
 bp = Blueprint('corners', __name__)
+
+# Initialize MongoDB connection if not already connected
+try:
+    if get_db() is None:
+        conn = MongoDBConnection()
+        conn.connect()
+except Exception:
+    pass
+
+corner_store = CornerStore()
+post_store = PostStore()
+user_store = UserStore()
+
+
+def validate_corner_data(data, is_update=False):
+    """
+    Validate corner creation/update data.
+
+    Args:
+        data: Request JSON data
+        is_update: Whether this is an update operation
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not is_update:
+        # Required fields for creation
+        required_fields = ['name', 'latitude', 'longitude']
+        for field in required_fields:
+            if field not in data:
+                return False, f'Missing required field: {field}'
+
+    # Validate coordinates
+    if 'latitude' in data:
+        try:
+            lat = float(data['latitude'])
+            if not -90 <= lat <= 90:
+                return False, 'Latitude must be between -90 and 90'
+        except (ValueError, TypeError):
+            return False, 'Invalid latitude'
+
+    if 'longitude' in data:
+        try:
+            lng = float(data['longitude'])
+            if not -180 <= lng <= 180:
+                return False, 'Longitude must be between -180 and 180'
+        except (ValueError, TypeError):
+            return False, 'Invalid longitude'
+
+    # Validate tags
+    if 'tags' in data:
+        if not isinstance(data['tags'], list):
+            return False, 'tags must be an array'
+
+    return True, None
 
 
 @bp.route('/api/corners', methods=['GET'])
 @jwt_optional
 def get_corners():
-    """Get list of corners with optional filtering."""
-    corners = load_corners()
+    """
+    获取地点列表，支持过滤和搜索。
 
-    # Get current user ID (from JWT or query param)
-    current_user_id = None
-    if hasattr(request, 'user_id'):
-        current_user_id = request.user_id
-    else:
-        current_user_id = request.args.get('user_id')
+    Query parameters:
+        - limit: 返回数量限制(默认 100)
+        - search: 搜索关键词(匹配名称或描述)
 
-    # Filter by privacy
-    filtered_corners = []
-    for corner in corners:
-        if can_access_corner(current_user_id, corner):
-            filtered_corners.append(corner)
-    corners = filtered_corners
+    Returns:
+        JSON with corners list
+    """
+    try:
+        limit = int(request.args.get('limit', 100))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 100
 
-    # Get query params
-    tags = request.args.get('tags')
     search = request.args.get('search')
 
-    # Filter by tags
-    if tags:
-        tag_list = [t.strip() for t in tags.split(',') if t.strip()]
-        if tag_list:
-            corners = [c for c in corners if
-                      any(tag in c.get('tags', []) for tag in tag_list)]
-
-    # Text search
+    # Query corners
     if search:
-        search_lower = search.lower()
-        corners = [c for c in corners if
-                  search_lower in c.get('title', '').lower() or
-                  search_lower in c.get('description', '').lower() or
-                  search_lower in c.get('address', '').lower()]
+        corners = corner_store.search_corners_by_name(search, limit=limit)
+    else:
+        corners = corner_store.get_all_corners(limit=limit)
 
-    # Sort by created_at descending
-    corners.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-
-    # Process corners to ensure likes count matches liked_users length
+    # Convert ObjectIds to strings for JSON response
+    result = []
     for corner in corners:
-        corner['likes'] = len(corner.get('liked_users', []))
+        corner_data = {
+            '_id': str(corner['_id']),
+            'name': corner.get('name', ''),
+            'description': corner.get('description', ''),
+            'location': corner.get('location'),
+            'address': corner.get('address', ''),
+            'created_at': corner.get('created_at')
+        }
+        result.append(corner_data)
 
-    return jsonify({'corners': corners})
+    return jsonify({
+        'success': True,
+        'data': {
+            'corners': result,
+            'total': len(result)
+        }
+    })
 
 
 @bp.route('/api/corners', methods=['POST'])
 @jwt_required
 def create_corner():
-    """Create a new corner."""
-    if 'image' not in request.files:
-        return jsonify({'error': 'Image required'}), 400
+    """
+    创建新地点。
 
-    file = request.files['image']
-    if file.filename == '' or not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid image file'}), 400
+    Request body (JSON):
+        - name: 地点名称(必填)
+        - description: 地点描述
+        - latitude: 纬度(必填, -90 到 90)
+        - longitude: 经度(必填, -180 到 180)
+        - address: 地址
+        - tags: 标签列表
 
-    title = request.form.get('title', '').strip()
-    description = request.form.get('description', '').strip()
-    latitude = request.form.get('latitude')
-    longitude = request.form.get('longitude')
-    address = request.form.get('address', '').strip()
-    tags = request.form.get('tags', '').strip()
+    Returns:
+        JSON with created corner data
+    """
+    data = request.get_json()
 
-    user_id = request.user_id
+    # Validate data
+    is_valid, error_msg = validate_corner_data(data)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
-    if not all([title, description, latitude, longitude]):
-        return jsonify({'error': 'All required fields must be filled'}), 400
+    # Extract fields
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    latitude = float(data['latitude'])
+    longitude = float(data['longitude'])
+    address = data.get('address', '').strip()
+    tags = data.get('tags', [])
 
+    # Check if corner name already exists
+    existing_corner = corner_store.get_corner_by_name(name)
+    if existing_corner:
+        return jsonify({'error': 'Corner with this name already exists'}), 400
+
+    # Create corner
     try:
-        latitude = float(latitude)
-        longitude = float(longitude)
-    except ValueError:
-        return jsonify({'error': 'Invalid coordinates'}), 400
+        corner_id = corner_store.create_corner(
+            name=name,
+            description=description,
+            latitude=latitude,
+            longitude=longitude,
+            address=address
+        )
 
-    # Save image
-    filename = secure_filename(file.filename)
-    file_ext = filename.rsplit('.', 1)[1].lower()
-    new_filename = f"{uuid.uuid4().hex}.{file_ext}"
-    file_path = os.path.join(Config.UPLOAD_FOLDER, new_filename)
-    file.save(file_path)
+        # Add tags if provided
+        if tags:
+            corner_store.update(corner_id, {'tags': tags})
 
-    visibility = request.form.get('visibility', 'public')
-    specific_friends = request.form.get('specific_friends', '').split(',') if request.form.get('specific_friends') else []
-    exclude_friends = request.form.get('exclude_friends', '').split(',') if request.form.get('exclude_friends') else []
+        # Get created corner
+        corner = corner_store.get_corner_by_id(corner_id)
 
-    specific_friends = [friend.strip() for friend in specific_friends if friend.strip()]
-    exclude_friends = [friend.strip() for friend in exclude_friends if friend.strip()]
+        return jsonify({
+            'success': True,
+            'message': 'Corner created successfully',
+            'data': {
+                '_id': str(corner['_id']),
+                'name': corner['name'],
+                'description': corner['description'],
+                'location': corner['location'],
+                'address': corner['address'],
+                'tags': corner.get('tags', []),
+                'created_at': corner['created_at']
+            }
+        }), 201
 
-    # Create new corner
-    corners = load_corners()
-    new_corner = {
-        'id': str(uuid.uuid4()),
-        'share_id': str(uuid.uuid4()),
-        'title': title,
-        'description': description,
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-        'tags': [tag.strip() for tag in tags.split(',') if tag.strip()],
-        'image_url': f'/uploads/{new_filename}',
-        'user_id': user_id,
-        'created_at': datetime.now().isoformat(),
-        'visibility': visibility,
-        'specific_friends': specific_friends,
-        'exclude_friends': exclude_friends,
-        'liked_users': [],
-        'favorited_users': [],
-        'comments': []
-    }
-
-    corners.append(new_corner)
-    save_corners(corners)
-
-    return jsonify({'message': 'Corner created', 'corner': new_corner}), 201
+    except Exception as e:
+        return jsonify({'error': f'Failed to create corner: {str(e)}'}), 500
 
 
 @bp.route('/api/corners/<corner_id>', methods=['GET'])
 def get_corner_detail(corner_id):
-    """Get corner detail by ID."""
-    corners = load_corners()
-    corner = next((c for c in corners if c['id'] == corner_id), None)
+    """
+    获取地点详情。
 
+    Args:
+        corner_id: 地点 ID
+
+    Returns:
+        JSON with corner detail
+    """
+    try:
+        corner_obj = ObjectId(corner_id)
+    except Exception:
+        return jsonify({'error': 'Invalid corner ID'}), 400
+
+    corner = corner_store.get_corner_by_id(corner_obj)
     if not corner:
         return jsonify({'error': 'Corner not found'}), 404
 
-    user_id = request.args.get('user_id')
-
-    if not can_access_corner(user_id, corner):
-        return jsonify({'error': 'Access denied'}), 403
-
-    is_liked = False
-    is_favorited = False
-
-    if user_id:
-        if 'liked_users' in corner:
-            is_liked = user_id in corner['liked_users']
-        if 'favorited_users' in corner:
-            is_favorited = user_id in corner['favorited_users']
-
-    corner_data = corner.copy()
-    corner_data['likes'] = len(corner.get('liked_users', []))
-
     return jsonify({
-        'corner': corner_data,
-        'is_liked': is_liked,
-        'is_favorited': is_favorited
+        'success': True,
+        'data': {
+            '_id': str(corner['_id']),
+            'name': corner['name'],
+            'description': corner['description'],
+            'location': corner['location'],
+            'address': corner['address'],
+            'tags': corner.get('tags', []),
+            'created_at': corner['created_at']
+        }
     })
 
 
 @bp.route('/api/corners/<corner_id>', methods=['PUT'])
 @jwt_required
 def update_corner(corner_id):
-    """Update a corner."""
-    user_id = request.user_id
+    """
+    更新地点信息。
 
-    corners = load_corners()
-    corner_index = next((i for i, c in enumerate(corners) if c['id'] == corner_id), -1)
+    Args:
+        corner_id: 地点 ID
 
-    if corner_index == -1:
+    Request body (JSON):
+        - name: 地点名称
+        - description: 地点描述
+        - latitude: 纬度
+        - longitude: 经度
+        - address: 地址
+        - tags: 标签列表
+
+    Returns:
+        JSON with updated corner data
+    """
+    try:
+        corner_obj = ObjectId(corner_id)
+    except Exception:
+        return jsonify({'error': 'Invalid corner ID'}), 400
+
+    # Check if corner exists
+    corner = corner_store.get_corner_by_id(corner_obj)
+    if not corner:
         return jsonify({'error': 'Corner not found'}), 404
 
-    if corners[corner_index]['user_id'] != user_id:
-        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json()
 
-    # Get form data
-    title = request.form.get('title', '').strip()
-    description = request.form.get('description', '').strip()
-    latitude = request.form.get('latitude')
-    longitude = request.form.get('longitude')
-    address = request.form.get('address', '').strip()
-    tags = request.form.get('tags', '').strip()
-    visibility = request.form.get('visibility', 'public')
-    specific_friends = request.form.get('specific_friends', '').split(',') if request.form.get('specific_friends') else []
-    exclude_friends = request.form.get('exclude_friends', '').split(',') if request.form.get('exclude_friends') else []
+    # Validate data
+    is_valid, error_msg = validate_corner_data(data, is_update=True)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
-    # Clean empty values
-    specific_friends = [friend.strip() for friend in specific_friends if friend.strip()]
-    exclude_friends = [friend.strip() for friend in exclude_friends if friend.strip()]
+    # Build update object
+    updates = {}
 
-    if not all([title, description, latitude, longitude]):
-        return jsonify({'error': 'All required fields must be filled'}), 400
+    if 'name' in data:
+        name = data['name'].strip()
+        # Check if new name conflicts with another corner
+        existing_corner = corner_store.get_corner_by_name(name)
+        if existing_corner and str(existing_corner['_id']) != corner_id:
+            return jsonify({'error': 'Corner with this name already exists'}), 400
+        updates['name'] = name
 
-    try:
-        latitude = float(latitude)
-        longitude = float(longitude)
-    except ValueError:
-        return jsonify({'error': 'Invalid coordinates'}), 400
+    if 'description' in data:
+        updates['description'] = data['description'].strip()
 
-    corner = corners[corner_index]
-    corner['title'] = title
-    corner['description'] = description
-    corner['latitude'] = latitude
-    corner['longitude'] = longitude
-    corner['address'] = address
-    corner['tags'] = [tag.strip() for tag in tags.split(',') if tag.strip()]
-    corner['visibility'] = visibility
-    corner['specific_friends'] = specific_friends
-    corner['exclude_friends'] = exclude_friends
+    if 'latitude' in data and 'longitude' in data:
+        latitude = float(data['latitude'])
+        longitude = float(data['longitude'])
+        updates['location'] = {
+            'type': 'Point',
+            'coordinates': [longitude, latitude]
+        }
 
-    if 'image' in request.files:
-        file = request.files['image']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file_ext = filename.rsplit('.', 1)[1].lower()
-            new_filename = f"{uuid.uuid4().hex}.{file_ext}"
-            file_path = os.path.join(Config.UPLOAD_FOLDER, new_filename)
-            file.save(file_path)
-            corner['image_url'] = f'/uploads/{new_filename}'
+    if 'address' in data:
+        updates['address'] = data['address'].strip()
 
-    save_corners(corners)
+    if 'tags' in data:
+        updates['tags'] = data['tags']
 
-    return jsonify({'message': 'Corner updated', 'corner': corner}), 200
+    # Update corner
+    success = corner_store.update(corner_obj, updates)
+    if not success:
+        return jsonify({'error': 'Failed to update corner'}), 500
+
+    # Get updated corner
+    updated_corner = corner_store.get_corner_by_id(corner_obj)
+
+    return jsonify({
+        'success': True,
+        'message': 'Corner updated successfully',
+        'data': {
+            '_id': str(updated_corner['_id']),
+            'name': updated_corner['name'],
+            'description': updated_corner['description'],
+            'location': updated_corner['location'],
+            'address': updated_corner['address'],
+            'tags': updated_corner.get('tags', []),
+            'created_at': updated_corner['created_at']
+        }
+    })
 
 
 @bp.route('/api/corners/<corner_id>', methods=['DELETE'])
 @jwt_required
 def delete_corner(corner_id):
-    """Delete a corner."""
-    user_id = request.user_id
+    """
+    删除地点。
 
-    corners = load_corners()
-    corner_index = next((i for i, c in enumerate(corners) if c['id'] == corner_id), -1)
+    Args:
+        corner_id: 地点 ID
 
-    if corner_index == -1:
+    Returns:
+        JSON with success message
+    """
+    try:
+        corner_obj = ObjectId(corner_id)
+    except Exception:
+        return jsonify({'error': 'Invalid corner ID'}), 400
+
+    # Check if corner exists
+    corner = corner_store.get_corner_by_id(corner_obj)
+    if not corner:
         return jsonify({'error': 'Corner not found'}), 404
 
-    if corners[corner_index]['user_id'] != user_id:
-        return jsonify({'error': 'Access denied'}), 403
+    # Delete corner
+    success = corner_store.delete(corner_obj)
+    if not success:
+        return jsonify({'error': 'Failed to delete corner'}), 500
 
-    corners.pop(corner_index)
-    save_corners(corners)
-
-    return jsonify({'message': 'Corner deleted'}), 200
-
-
-@bp.route('/api/tags', methods=['GET'])
-def get_tags():
-    """Get preset tags."""
-    preset_tags = Config.PRESET_TAGS
-
-    # Get search param
-    search_query = request.args.get('q', '').strip()
-
-    # Filter tags if search query provided
-    if search_query:
-        filtered_tags = [tag for tag in preset_tags if search_query.lower() in tag.lower()]
-        return jsonify({'tags': sorted(filtered_tags)})
-
-    return jsonify({'tags': sorted(preset_tags)})
+    return jsonify({
+        'success': True,
+        'message': 'Corner deleted successfully'
+    })
 
 
-@bp.route('/uploads/<filename>')
-def uploaded_file(filename):
-    """Serve uploaded files."""
-    return send_from_directory(Config.UPLOAD_FOLDER, filename)
+@bp.route('/api/corners/nearby', methods=['GET'])
+@jwt_optional
+def get_nearby_corners():
+    """
+    查询附近地点。
+
+    Query parameters:
+        - lat: 纬度(必填, -90 到 90)
+        - lng: 经度(必填, -180 到 180)
+        - radius: 搜索半径(米,默认 10000,即 10km)
+        - limit: 返回数量限制(默认 20)
+
+    Returns:
+        JSON with nearby corners sorted by distance
+    """
+    # Get and validate parameters
+    try:
+        lat = float(request.args.get('lat'))
+        if not -90 <= lat <= 90:
+            return jsonify({'error': 'Invalid latitude (must be -90 to 90)'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Missing or invalid parameter: lat'}), 400
+
+    try:
+        lng = float(request.args.get('lng'))
+        if not -180 <= lng <= 180:
+            return jsonify({'error': 'Invalid longitude (must be -180 to 180)'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Missing or invalid parameter: lng'}), 400
+
+    try:
+        radius = int(request.args.get('radius', 10000))
+        if radius < 10 or radius > 100000:
+            return jsonify({'error': 'Invalid radius (must be 10 to 100000 meters)'}), 400
+    except (ValueError, TypeError):
+        radius = 10000
+
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 100)
+    except (ValueError, TypeError):
+        limit = 20
+
+    # Query nearby corners
+    corners = corner_store.get_nearby_corners(
+        latitude=lat,
+        longitude=lng,
+        max_distance=radius,
+        limit=limit
+    )
+
+    # Prepare response with distance information
+    result = []
+    for corner in corners:
+        # Calculate distance
+        distance = corner_store.calculate_distance(
+            lat, lng,
+            corner['location']['coordinates'][1],
+            corner['location']['coordinates'][0]
+        )
+
+        corner_data = {
+            '_id': str(corner['_id']),
+            'name': corner.get('name', ''),
+            'description': corner.get('description', ''),
+            'location': corner['location'],
+            'address': corner.get('address', ''),
+            'distance': round(distance, 2),  # Distance in meters
+            'created_at': corner.get('created_at')
+        }
+        result.append(corner_data)
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'corners': result,
+            'query_point': {
+                'lat': lat,
+                'lng': lng
+            },
+            'radius': radius,
+            'total': len(result)
+        }
+    })
+
+
+@bp.route('/api/corners/<corner_id>/posts', methods=['GET'])
+@jwt_optional
+def get_corner_posts(corner_id):
+    """
+    获取关联指定地点的所有帖子。
+
+    Args:
+        corner_id: 地点 ID
+
+    Query parameters:
+        - limit: 每页数量(默认 20)
+        - skip: 跳过数量(用于分页)
+
+    Returns:
+        JSON with corner info and posts list
+    """
+    try:
+        corner_obj = ObjectId(corner_id)
+    except Exception:
+        return jsonify({'error': 'Invalid corner ID'}), 400
+
+    # Get corner
+    corner = corner_store.get_corner_by_id(corner_obj)
+    if not corner:
+        return jsonify({'error': 'Corner not found'}), 404
+
+    # Get pagination parameters
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 20
+
+    try:
+        skip = int(request.args.get('skip', 0))
+        if skip < 0:
+            skip = 0
+    except ValueError:
+        skip = 0
+
+    # Get current user ID
+    current_user_id = getattr(request, 'user_id', None)
+
+    # Get posts that reference this corner
+    posts = post_store.get_posts_by_corner(corner_obj, limit=limit, skip=skip)
+
+    # Filter by visibility
+    visible_posts = []
+    for post in posts:
+        if check_post_visibility(current_user_id, post, is_following_user):
+            # Expand post data
+            post_data = {
+                '_id': str(post['_id']),
+                'user_id': str(post['user_id']),
+                'title': post.get('title', ''),
+                'description': post.get('description', ''),
+                'media_type': post.get('media_type'),
+                'media_files': [str(fid) for fid in post.get('media_files', [])],
+                'tags': post.get('tags', []),
+                'visibility': post.get('visibility'),
+                'created_at': post.get('created_at'),
+                'stats': post.get('stats', {})
+            }
+
+            # Get creator username
+            creator = user_store.get_user_by_id(post['user_id'])
+            if creator:
+                post_data['username'] = creator.get('username', '')
+
+            visible_posts.append(post_data)
+
+    # Get total count
+    total = post_store.count_posts_by_corner(corner_obj)
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'corner': {
+                '_id': str(corner['_id']),
+                'name': corner['name'],
+                'location': corner['location']
+            },
+            'posts': visible_posts,
+            'total': total,
+            'limit': limit,
+            'skip': skip
+        }
+    })
+
+
+@bp.route('/api/corners/aggregate', methods=['GET'])
+@jwt_optional
+def get_corners_aggregate():
+    """
+    获取多个地点的聚合信息,包括帖子数量、热度等.
+
+    Query parameters:
+        - corner_ids: 逗号分隔的地点 ID 列表(必填)
+
+    Returns:
+        JSON with corners aggregate information
+    """
+    # Get corner_ids parameter
+    corner_ids_str = request.args.get('corner_ids', '')
+    if not corner_ids_str:
+        return jsonify({'error': 'Missing corner_ids parameter'}), 400
+
+    # Parse corner_ids
+    corner_ids = [cid.strip() for cid in corner_ids_str.split(',') if cid.strip()]
+    if not corner_ids:
+        return jsonify({'error': 'No valid corner IDs provided'}), 400
+
+    try:
+        corner_id_objs = [ObjectId(cid) for cid in corner_ids]
+    except Exception:
+        return jsonify({'error': 'Invalid corner ID format'}), 400
+
+    # Batch query corners
+    corners = list(corner_store.collection.find({"_id": {"$in": corner_id_objs}}))
+
+    if not corners:
+        return jsonify({
+            'success': True,
+            'data': {
+                'corners': []
+            }
+        })
+
+    # Aggregate query for post statistics
+    pipeline = [
+        {
+            "$match": {
+                "corner_ids": {"$in": corner_id_objs},
+                "visibility": {"$in": ["public", "followers"]}
+            }
+        },
+        {
+            "$unwind": "$corner_ids"
+        },
+        {
+            "$group": {
+                "_id": "$corner_ids",
+                "post_count": {"$sum": 1},
+                "total_likes": {"$sum": "$stats.likes_count"},
+                "total_comments": {"$sum": "$stats.comments_count"}
+            }
+        }
+    ]
+
+    try:
+        stats = list(post_store.collection.aggregate(pipeline))
+    except Exception as e:
+        return jsonify({'error': f'Failed to aggregate posts: {str(e)}'}), 500
+
+    # Build stats map
+    stats_map = {str(s['_id']): s for s in stats}
+
+    # Query recent posts
+    try:
+        recent_posts = list(post_store.collection.find({
+            "corner_ids": {"$in": corner_id_objs},
+            "visibility": {"$in": ["public", "followers"]}
+        }).sort("created_at", -1).limit(20))
+    except Exception as e:
+        recent_posts = []
+
+    # Build corner_posts_map
+    corner_posts_map = {}
+    for post in recent_posts:
+        for cid in post.get('corner_ids', []):
+            cid_str = str(cid)
+            if cid_str not in corner_posts_map:
+                corner_posts_map[cid_str] = []
+            if len(corner_posts_map[cid_str]) < 3:  # Keep only 3 recent posts per corner
+                corner_posts_map[cid_str].append({
+                    'post_id': str(post['_id']),
+                    'title': post.get('title', ''),
+                    'created_at': post.get('created_at')
+                })
+
+    # Build result
+    result = []
+    for corner in corners:
+        cid_str = str(corner['_id'])
+        stat = stats_map.get(cid_str, {'post_count': 0, 'total_likes': 0, 'total_comments': 0})
+
+        result.append({
+            'corner_id': cid_str,
+            'name': corner.get('name', ''),
+            'description': corner.get('description', ''),
+            'location': corner.get('location', {}),
+            'address': corner.get('address', ''),
+            'post_count': stat['post_count'],
+            'total_likes': stat['total_likes'],
+            'total_comments': stat['total_comments'],
+            'recent_posts': corner_posts_map.get(cid_str, [])
+        })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'corners': result
+        }
+    })
+
+
+@bp.route('/api/corners/search', methods=['GET'])
+@jwt_optional
+def search_corners():
+    """
+    根据名称或描述搜索地点.
+
+    Query parameters:
+        - q: 搜索关键词(必填)
+        - limit: 返回数量(默认 20)
+
+    Returns:
+        JSON with matching corners
+    """
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'error': 'Missing search query'}), 400
+
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 20
+
+    # Use regex for fuzzy search on name and description
+    import re
+    regex = re.compile(query, re.IGNORECASE)
+
+    try:
+        corners = list(corner_store.collection.find({
+            "$or": [
+                {"name": regex},
+                {"description": regex}
+            ]
+        }).limit(limit))
+    except Exception as e:
+        return jsonify({'error': f'Failed to search corners: {str(e)}'}), 500
+
+    # Convert to response format
+    result = []
+    for corner in corners:
+        result.append({
+            '_id': str(corner['_id']),
+            'name': corner.get('name', ''),
+            'description': corner.get('description', ''),
+            'location': corner.get('location', {}),
+            'address': corner.get('address', ''),
+            'tags': corner.get('tags', []),
+            'created_at': corner.get('created_at')
+        })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'corners': result,
+            'total': len(result)
+        }
+    })

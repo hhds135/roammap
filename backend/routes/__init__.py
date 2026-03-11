@@ -12,6 +12,7 @@ def register_blueprints(app: Flask):
     from . import auth, corners, likes, favorites, comments, sharing, health
     from . import posts, media, users
     from . import follows, feed
+    from . import view_history, recommendations
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(corners.bp)
@@ -25,3 +26,5 @@ def register_blueprints(app: Flask):
     app.register_blueprint(users.bp)
     app.register_blueprint(follows.bp)
     app.register_blueprint(feed.bp)
+    app.register_blueprint(view_history.bp)
+    app.register_blueprint(recommendations.bp)

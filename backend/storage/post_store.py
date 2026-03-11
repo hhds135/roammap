@@ -130,22 +130,36 @@ class PostStore(BaseStore):
         )
     
     def get_posts_by_corner(self, corner_id: ObjectId,
-                            limit: int = 20) -> List[Dict[str, Any]]:
+                            limit: int = 20, skip: int = 0) -> List[Dict[str, Any]]:
         """
         Get posts that mention a specific corner.
-        
+
         Args:
             corner_id: Corner's ObjectId
             limit: Maximum number of results
-            
+            skip: Number of results to skip
+
         Returns:
             List of posts
         """
         return self.find(
             {'corner_ids': corner_id},
             limit=limit,
+            skip=skip,
             sort=[('created_at', -1)]
         )
+
+    def count_posts_by_corner(self, corner_id: ObjectId) -> int:
+        """
+        Count posts that mention a specific corner.
+
+        Args:
+            corner_id: Corner's ObjectId
+
+        Returns:
+            Number of posts
+        """
+        return self.count({'corner_ids': corner_id})
     
     def get_feed_posts(self, user_id: ObjectId = None,
                        limit: int = 20, skip: int = 0) -> List[Dict[str, Any]]:

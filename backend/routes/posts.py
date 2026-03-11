@@ -230,6 +230,10 @@ def create_post():
         if not isinstance(route_corner_ids, list):
             return jsonify({'error': 'route.corner_ids must be an array'}), 400
 
+        # Validate route has at least 2 corners
+        if len(route_corner_ids) < 2:
+            return jsonify({'error': 'Route must contain at least 2 corners'}), 400
+
         # Validate route corners are in main corner_ids
         for route_corner_id in route_corner_ids:
             if route_corner_id not in corner_ids:
@@ -597,5 +601,84 @@ def get_posts_by_user(user_id):
         'data': {
             'posts': filtered_posts,
             'total': len(filtered_posts)
+        }
+    })
+
+
+@bp.route('/api/posts/<post_id>/route', methods=['GET'])
+@jwt_optional
+def get_post_route(post_id):
+    """
+    获取帖子的路线详细信息和完整的地点数据.
+
+    Args:
+        post_id: Post ObjectId
+
+    Returns:
+        JSON with route details including corner information
+    """
+    try:
+        post_obj = ObjectId(post_id)
+    except Exception:
+        return jsonify({'error': 'Invalid post ID'}), 400
+
+    # Get post
+    post = post_store.get_post_by_id(post_obj)
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    # Check if post has route
+    route = post.get('route')
+    if not route:
+        return jsonify({'error': 'Post has no route'}), 404
+
+    # Get current user ID for visibility check
+    current_user_id = getattr(request, 'user_id', None)
+
+    # Check visibility
+    if not check_post_visibility(current_user_id, post, is_following_user):
+        return jsonify({'error': 'Access denied'}), 403
+
+    # Get route corner IDs
+    route_corner_ids = route.get('corner_ids', [])
+    if not route_corner_ids:
+        return jsonify({'error': 'Route has no corners'}), 404
+
+    # Batch query corners
+    corners_map = {}
+    try:
+        corners = corner_store.collection.find({
+            "_id": {"$in": route_corner_ids}
+        })
+        for corner in corners:
+            corners_map[str(corner['_id'])] = corner
+    except Exception as e:
+        return jsonify({'error': f'Failed to get corners: {str(e)}'}), 500
+
+    # Build ordered corners list with sequence numbers
+    ordered_corners = []
+    for idx, corner_id in enumerate(route_corner_ids, start=1):
+        corner_id_str = str(corner_id)
+        corner = corners_map.get(corner_id_str)
+        if corner:
+            ordered_corners.append({
+                'sequence': idx,
+                'corner_id': corner_id_str,
+                'name': corner.get('name', ''),
+                'description': corner.get('description', ''),
+                'location': corner.get('location', {}),
+                'address': corner.get('address', ''),
+                'tags': corner.get('tags', [])
+            })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'post_id': post_id,
+            'route': {
+                'route_name': route.get('route_name', ''),
+                'created_at': route.get('created_at'),
+                'corners': ordered_corners
+            }
         }
     })

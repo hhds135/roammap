@@ -4,11 +4,15 @@ from bson import ObjectId
 
 from storage.post_store import PostStore
 from storage.user_store import UserStore
+from storage.corner_store import CornerStore
 from utils import jwt_required, jwt_optional, check_post_visibility, is_following_user
+from services.recommendation_service import get_recommendation_service
 
 bp = Blueprint('feed', __name__)
 post_store = PostStore()
 user_store = UserStore()
+corner_store = CornerStore()
+recommendation_service = get_recommendation_service()
 
 
 def expand_post_feed_data(post):
@@ -256,3 +260,224 @@ def get_public_feed():
             'skip': skip
         }
     })
+
+
+@bp.route('/api/feed', methods=['GET'])
+@jwt_optional
+def get_comprehensive_feed():
+    """
+    获取综合信息流,混合推荐帖子和关注用户的帖子.
+
+    Query parameters:
+        - type: 信息流类型 (all, recommendation, following, 默认 all)
+        - lat: 用户当前纬度(可选)
+        - lng: 用户当前经度(可选)
+        - limit: 返回帖子数量(默认 20)
+
+    Returns:
+        JSON with feed posts
+    """
+    current_user_id = getattr(request, 'user_id', None)
+
+    # Get query parameters
+    feed_type = request.args.get('type', 'all')
+
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 20
+
+    # Get user location
+    user_location = None
+    lat = request.args.get('lat')
+    lng = request.args.get('lng')
+
+    if lat and lng:
+        try:
+            user_location = (float(lat), float(lng))
+            # Validate coordinates
+            if not (-90 <= user_location[0] <= 90 and -180 <= user_location[1] <= 180):
+                return jsonify({'error': 'Invalid coordinates'}), 400
+        except ValueError:
+            return jsonify({'error': 'Invalid coordinates format'}), 400
+
+    posts = []
+
+    # Get posts based on feed type
+    if feed_type == 'all':
+        # Mix recommendation and following posts
+        limit_per_type = limit // 2
+
+        # Get recommendation posts
+        try:
+            recommend_posts = recommendation_service.recommend_feed(
+                user_id=current_user_id,
+                user_location=user_location,
+                limit=limit_per_type
+            )
+        except Exception:
+            recommend_posts = []
+
+        # Get following posts
+        following_posts = []
+        if current_user_id:
+            try:
+                current_user_obj = ObjectId(current_user_id)
+                current_user = user_store.get_user_by_id(current_user_obj)
+                if current_user:
+                    following_ids = current_user.get('following', [])
+                    user_ids_to_query = list(following_ids) + [current_user_obj]
+
+                    pipeline = [
+                        {
+                            '$match': {
+                                'user_id': {'$in': user_ids_to_query},
+                                'visibility': {'$in': ['public', 'followers']}
+                            }
+                        },
+                        {'$sort': {'created_at': -1}},
+                        {'$limit': limit_per_type}
+                    ]
+                    following_posts = list(post_store.collection.aggregate(pipeline))
+            except Exception:
+                pass
+
+        # Mix and deduplicate
+        post_dict = {}
+        for post in recommend_posts:
+            post_dict[str(post['_id'])] = post
+        for post in following_posts:
+            post_dict[str(post['_id'])] = post
+
+        posts = list(post_dict.values())[:limit]
+
+    elif feed_type == 'recommendation':
+        # Only recommendation posts
+        try:
+            posts = recommendation_service.recommend_feed(
+                user_id=current_user_id,
+                user_location=user_location,
+                limit=limit
+            )
+        except Exception as e:
+            return jsonify({'error': f'Failed to get recommendations: {str(e)}'}), 500
+
+    elif feed_type == 'following':
+        # Only following posts
+        if not current_user_id:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'posts': [],
+                    'feed_type': 'following',
+                    'message': 'Login required to view following feed'
+                }
+            })
+
+        try:
+            current_user_obj = ObjectId(current_user_id)
+            current_user = user_store.get_user_by_id(current_user_obj)
+            if not current_user:
+                return jsonify({'error': 'User not found'}), 404
+
+            following_ids = current_user.get('following', [])
+            user_ids_to_query = list(following_ids) + [current_user_obj]
+
+            if not user_ids_to_query:
+                posts = []
+            else:
+                pipeline = [
+                    {
+                        '$match': {
+                            'user_id': {'$in': user_ids_to_query},
+                            'visibility': {'$in': ['public', 'followers']}
+                        }
+                    },
+                    {'$sort': {'created_at': -1}},
+                    {'$limit': limit}
+                ]
+                posts = list(post_store.collection.aggregate(pipeline))
+        except Exception as e:
+            return jsonify({'error': f'Failed to get following feed: {str(e)}'}), 500
+
+    else:
+        return jsonify({'error': 'Invalid feed type. Must be "all", "recommendation", or "following"'}), 400
+
+    # Enrich posts with related data
+    enriched_posts = []
+    if posts:
+        # Batch query users
+        user_ids = list(set([post['user_id'] for post in posts if 'user_id' in post]))
+        users = {}
+        if user_ids:
+            users_list = list(user_store.collection.find({"_id": {"$in": user_ids}}))
+            users = {str(u['_id']): u for u in users_list}
+
+        # Batch query corners
+        corner_ids = set()
+        for post in posts:
+            for cid in post.get('corner_ids', []):
+                corner_ids.add(cid)
+        corners = {}
+        if corner_ids:
+            corners_list = list(corner_store.collection.find({"_id": {"$in": list(corner_ids)}}))
+            corners = {str(c['_id']): c for c in corners_list}
+
+        # Enrich each post
+        for post in posts:
+            post_data = {
+                '_id': str(post['_id']),
+                'user_id': str(post['user_id']),
+                'title': post.get('title', ''),
+                'description': post.get('description', ''),
+                'media_type': post.get('media_type'),
+                'media_files': [str(fid) for fid in post.get('media_files', [])],
+                'tags': post.get('tags', []),
+                'visibility': post.get('visibility'),
+                'created_at': post.get('created_at'),
+                'stats': post.get('stats', {})
+            }
+
+            # Add username
+            user = users.get(str(post['user_id']))
+            post_data['username'] = user.get('username', '') if user else ''
+
+            # Add corner information
+            post_corners = []
+            for cid in post.get('corner_ids', []):
+                corner = corners.get(str(cid))
+                if corner:
+                    post_corners.append({
+                        'corner_id': str(cid),
+                        'name': corner.get('name', '')
+                    })
+            post_data['corners'] = post_corners
+
+            # Add route if exists
+            if 'route' in post and post['route']:
+                route_data = post['route'].copy()
+                route_data['corner_ids'] = [str(cid) for cid in route_data.get('corner_ids', [])]
+                post_data['route'] = route_data
+
+            # Check visibility
+            if check_post_visibility(current_user_id, post, is_following_user):
+                enriched_posts.append(post_data)
+
+    # Build response
+    response_data = {
+        'success': True,
+        'data': {
+            'posts': enriched_posts,
+            'feed_type': feed_type
+        }
+    }
+
+    # Add user location if provided
+    if user_location:
+        response_data['data']['user_location'] = {
+            'lat': user_location[0],
+            'lng': user_location[1]
+        }
+
+    return jsonify(response_data)

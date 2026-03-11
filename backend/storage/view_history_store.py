@@ -195,20 +195,52 @@ class ViewHistoryStore(BaseStore):
     def cleanup_old_views(self, days: int = 30) -> int:
         """
         Delete view records older than specified days.
-        
+
         Args:
             days: Number of days to keep
-            
+
         Returns:
             Number of deleted records
         """
         cutoff_time = datetime.utcnow() - timedelta(days=days)
-        
+
         result = self.collection.delete_many({
             'created_at': {'$lt': cutoff_time}
         })
         return result.deleted_count
-    
+
+    def get_trending_posts(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get trending posts based on view count within a time period.
+
+        Args:
+            hours: Number of hours to look back
+            limit: Maximum number of results
+
+        Returns:
+            List of posts with view counts
+        """
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+        pipeline = [
+            {
+                "$match": {
+                    "created_at": {"$gte": cutoff_time}
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$post_id",
+                    "view_count": {"$sum": 1},
+                    "total_duration": {"$sum": "$view_duration"}
+                }
+            },
+            {"$sort": {"view_count": -1}},
+            {"$limit": limit}
+        ]
+
+        return list(self.collection.aggregate(pipeline))
+
     def create_indexes(self):
         """Create indexes for the view_history collection."""
         self.collection.create_index('user_id')
