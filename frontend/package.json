@@ -1,7 +1,7 @@
 {
   "name": "urban-canvas-frontend",
   "version": "1.0.0",
-  "description": "城事绘图 - 交互式地图应用前端",
+  "description": "Urban Canvas - Interactive map application frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",
