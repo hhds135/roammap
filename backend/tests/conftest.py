@@ -179,3 +179,128 @@ def user_store():
     """User store fixture for tests."""
     from storage.user_store import UserStore
     return UserStore()
+
+
+@pytest.fixture
+def post_store():
+    """Post store fixture for tests."""
+    from storage.post_store import PostStore
+    return PostStore()
+
+
+@pytest.fixture
+def view_history_store():
+    """View history store fixture for tests."""
+    from storage.view_history_store import ViewHistoryStore
+    return ViewHistoryStore()
+
+
+@pytest.fixture
+def like_store():
+    """Like store fixture for tests."""
+    from storage.like_store import LikeStore
+    return LikeStore()
+
+
+@pytest.fixture
+def favorite_store():
+    """Favorite store fixture for tests."""
+    from storage.favorite_store import FavoriteStore
+    return FavoriteStore()
+
+
+@pytest.fixture(scope='function')
+def cleanup_test_data():
+    """
+    Fixture to clean up test data before and after each test.
+    
+    This ensures tests don't fail due to duplicate keys or leftover data.
+    """
+    from storage.corner_store import CornerStore
+    from storage.post_store import PostStore
+    from storage.user_store import UserStore
+    from storage.view_history_store import ViewHistoryStore
+    from storage.like_store import LikeStore
+    from storage.favorite_store import FavoriteStore
+    from storage.comment_store import CommentStore
+    from bson import ObjectId
+    
+    corner_store = CornerStore()
+    post_store = PostStore()
+    user_store = UserStore()
+    view_history_store = ViewHistoryStore()
+    like_store = LikeStore()
+    favorite_store = FavoriteStore()
+    comment_store = CommentStore()
+    
+    # Clean up before test
+    _cleanup_all_data(
+        corner_store, post_store, user_store,
+        view_history_store, like_store, favorite_store, comment_store
+    )
+    
+    yield
+    
+    # Clean up after test
+    _cleanup_all_data(
+        corner_store, post_store, user_store,
+        view_history_store, like_store, favorite_store, comment_store
+    )
+
+
+def _cleanup_all_data(corner_store, post_store, user_store,
+                      view_history_store, like_store, favorite_store, comment_store):
+    """
+    Clean up all test data from collections.
+    
+    Args:
+        corner_store: CornerStore instance
+        post_store: PostStore instance
+        user_store: UserStore instance
+        view_history_store: ViewHistoryStore instance
+        like_store: LikeStore instance
+        favorite_store: FavoriteStore instance
+        comment_store: CommentStore instance
+    """
+    # Clear view history
+    try:
+        view_history_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear comments
+    try:
+        comment_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear likes
+    try:
+        like_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear favorites
+    try:
+        favorite_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear posts
+    try:
+        post_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear corners (excluding preset ones if any)
+    try:
+        corner_store.collection.delete_many({})
+    except Exception:
+        pass
+    
+    # Clear users (be careful with this in production)
+    try:
+        # Only delete test users (those with 'test' in username)
+        user_store.collection.delete_many({'username': {'$regex': 'test', '$options': 'i'}})
+    except Exception:
+        pass

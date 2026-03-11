@@ -1734,3 +1734,91 @@ class TestRouteFunctionality:
         }, auth_token=token)
 
         assert response.status_code == 400
+
+    def test_create_post_with_route_single_corner_fails(self, api_client, registered_user, corner_store):
+        """Test that creating post with route containing only 1 corner fails."""
+        # Create test corner with unique name
+        import time
+        unique_id = str(int(time.time()))
+        corner_id = corner_store.create_corner(
+            name=f"Single Corner Route {unique_id}",
+            description="Test corner",
+            latitude=31.2304,
+            longitude=121.4737,
+            address="Address"
+        )
+
+        # Get user token
+        user_dict, token = registered_user
+
+        # Upload media using correct method
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Try to create post with route containing only 1 corner
+        response, data = api_client.post_json('/api/posts', {
+            'title': 'Post with Single Corner Route',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner_id)],
+            'route': {
+                'route_name': 'Single Corner Route',
+                'corner_ids': [str(corner_id)]
+            },
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert response.status_code == 400
+        assert 'error' in data
+        assert 'at least 2 corners' in data['error'].lower()
+
+    def test_create_post_with_route_empty_corners_fails(self, api_client, registered_user, corner_store):
+        """Test that creating post with route containing no corners fails."""
+        # Create test corner with unique name
+        import time
+        unique_id = str(int(time.time()) + 1)
+        corner_id = corner_store.create_corner(
+            name=f"Empty Corner Route {unique_id}",
+            description="Test corner",
+            latitude=31.2304,
+            longitude=121.4737,
+            address="Address"
+        )
+
+        # Get user token
+        user_dict, token = registered_user
+
+        # Upload media using correct method
+        image_file = create_test_image_file('test.png')
+        _, upload_data = api_client.post_multipart(
+            '/api/media/upload',
+            data={'media_type': 'image'},
+            files={'file': image_file},
+            auth_token=token
+        )
+
+        file_id = upload_data['data']['file_id']
+
+        # Try to create post with route containing no corners
+        response, data = api_client.post_json('/api/posts', {
+            'title': 'Post with Empty Route',
+            'media_type': 'image',
+            'media_files': [file_id],
+            'corner_ids': [str(corner_id)],
+            'route': {
+                'route_name': 'Empty Route',
+                'corner_ids': []
+            },
+            'visibility': 'public'
+        }, auth_token=token)
+
+        assert response.status_code == 400
+        assert 'error' in data
+        assert 'at least 2 corners' in data['error'].lower()
