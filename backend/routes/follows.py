@@ -1,4 +1,4 @@
-"""Follow system endpoints - 单向关注系统."""
+"""Follow system endpoints."""
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
 
@@ -16,10 +16,10 @@ MAX_FOLLOWING = 1000
 @jwt_required
 def follow_user(user_id):
     """
-    关注指定用户。
+    Follow a specific user.
 
     Args:
-        user_id: 要关注的用户 ID（URL 路径参数）
+        user_id: ID of the user to follow (URL path parameter)
 
     Returns:
         JSON with follow status
@@ -79,10 +79,10 @@ def follow_user(user_id):
 @jwt_required
 def unfollow_user(user_id):
     """
-    取消关注指定用户。
+    Unfollow a specific user.
 
     Args:
-        user_id: 要取消关注的用户 ID（URL 路径参数）
+        user_id: ID of the user to unfollow (URL path parameter)
 
     Returns:
         JSON with follow status
@@ -128,14 +128,14 @@ def unfollow_user(user_id):
 @jwt_optional
 def get_following(user_id):
     """
-    获取指定用户关注的所有用户列表。
+    Get list of all users followed by a specific user.
 
     Args:
-        user_id: 用户 ID（URL 路径参数）
+        user_id: User ID (URL path parameter)
 
     Query parameters:
-        - limit: 每页数量（默认 20）
-        - skip: 跳过数量（用于分页）
+        - limit: Number of users per page (default 20)
+        - skip: Number of users to skip (for pagination)
 
     Returns:
         JSON with following list
@@ -195,14 +195,14 @@ def get_following(user_id):
 @jwt_optional
 def get_followers(user_id):
     """
-    获取关注指定用户的所有用户列表（粉丝）。
+    Get list of all users following a specific user (followers).
 
     Args:
-        user_id: 用户 ID（URL 路径参数）
+        user_id: User ID (URL path parameter)
 
     Query parameters:
-        - limit: 每页数量（默认 20）
-        - skip: 跳过数量（用于分页）
+        - limit: Number of users per page (default 20)
+        - skip: Number of users to skip (for pagination)
 
     Returns:
         JSON with followers list
@@ -262,10 +262,10 @@ def get_followers(user_id):
 @jwt_optional
 def get_follow_status(user_id):
     """
-    检查当前用户是否关注指定用户。
+    Check if current user is following a specific user.
 
     Args:
-        user_id: 要检查的用户 ID（URL 路径参数）
+        user_id: ID of the user to check (URL path parameter)
 
     Returns:
         JSON with follow status

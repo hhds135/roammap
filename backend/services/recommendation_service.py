@@ -1,5 +1,5 @@
 """
-Recommendation service - 推荐算法服务.
+Recommendation service - Personalized content recommendation algorithm.
 
 Implements personalized content recommendation based on:
 - Geographic proximity (40%)
@@ -33,21 +33,22 @@ RECOMMENDATION_CACHE_TTL = getattr(Config, 'RECOMMENDATION_CACHE_TTL', 300)
 
 class RecommendationService:
     """
-    推荐算法服务类.
+    Recommendation algorithm service class.
 
-    综合考虑地理位置、兴趣标签、社交关系和行为历史计算推荐分数。
+    Calculates recommendation scores by comprehensively considering geographic location, 
+    interest tags, social relationships, and behavior history.
     """
 
     def __init__(self, weights: Optional[Dict[str, float]] = None):
         """
-        初始化推荐服务.
+        Initialize recommendation service.
 
         Args:
-            weights: 推荐权重配置，默认为:
-                - geo: 0.4 (地理位置)
-                - interest: 0.3 (兴趣标签)
-                - social: 0.2 (社交关系)
-                - behavior: 0.1 (行为历史)
+            weights: Recommendation weight configuration, defaults to:
+                - geo: 0.4 (geographic location)
+                - interest: 0.3 (interest tags)
+                - social: 0.2 (social relationships)
+                - behavior: 0.1 (behavior history)
         """
         self.weights = weights or {
             'geo': 0.4,
@@ -129,15 +130,15 @@ class RecommendationService:
                        user_location: Optional[Tuple[float, float]] = None,
                        limit: int = 20) -> List[Dict[str, Any]]:
         """
-        为用户生成推荐信息流.
+        Generate personalized recommendation feed for users.
 
         Args:
-            user_id: 用户 ID(可选，未登录用户使用匿名推荐)
-            user_location: 用户位置 (lat, lng),可选
-            limit: 返回帖子数量
+            user_id: User ID (optional, anonymous users use anonymous recommendations)
+            user_location: User location (lat, lng), optional
+            limit: Number of posts to return
 
         Returns:
-            按推荐分数排序的帖子列表
+            List of posts sorted by recommendation score
         """
         start_time = time.time()
 
@@ -152,10 +153,10 @@ class RecommendationService:
 
         logger.info(f"Generating recommendations for user={user_id}, location={user_location}")
 
-        # 1. 获取候选帖子 (公开帖子)
+        # 1. Get candidate posts (public posts)
         candidates = self._get_candidate_posts()
 
-        # 2. 获取用户信息
+        # 2. Get user information
         user = None
         if user_id:
             try:
@@ -164,7 +165,7 @@ class RecommendationService:
             except Exception as e:
                 logger.warning(f"Failed to get user {user_id}: {e}")
 
-        # 3. 计算每个帖子的推荐分数
+        # 3. Calculate recommendation score for each post
         scored_posts = []
         for post in candidates:
             score, breakdown = self._calculate_post_score(
@@ -176,10 +177,10 @@ class RecommendationService:
                 'breakdown': breakdown
             })
 
-        # 4. 按分数排序
+        # 4. Sort by score
         scored_posts.sort(key=lambda x: x['score'], reverse=True)
 
-        # 5. 返回前 N 个帖子
+        # 5. Return top N posts
         result = [sp['post'] for sp in scored_posts[:limit]]
 
         # Cache the result
@@ -215,13 +216,13 @@ class RecommendationService:
 
     def _get_candidate_posts(self, limit: int = 1000) -> List[Dict[str, Any]]:
         """
-        获取候选帖子列表.
+        Get list of candidate posts.
 
         Args:
-            limit: 最大候选数量
+            limit: Maximum number of candidates
 
         Returns:
-            候选帖子列表 (仅公开帖子)
+            List of candidate posts (public posts only)
         """
         return self.post_store.get_posts_by_visibility('public', limit=limit)
 
@@ -230,24 +231,24 @@ class RecommendationService:
                                user_location: Optional[Tuple[float, float]],
                                user_id: Optional[str]) -> Tuple[float, Dict[str, float]]:
         """
-        计算帖子的推荐分数.
+        Calculate recommendation score for a post.
 
         Args:
-            post: 帖子数据
-            user: 用户数据
-            user_location: 用户位置
-            user_id: 用户 ID
+            post: Post data
+            user: User data
+            user_location: User location
+            user_id: User ID
 
         Returns:
-            (总分数，分数分解字典)
+            (total score, score breakdown dictionary)
         """
-        # 计算各维度分数
+        # Calculate scores for each dimension
         geo_score = self._calculate_geo_score(post, user_location)
         interest_score = self._calculate_interest_score(post, user)
         social_score = self._calculate_social_score(post, user_id)
         behavior_score = self._calculate_behavior_score(post, user_id)
 
-        # 加权计算总分
+        # Calculate weighted total score
         total_score = (
             geo_score * self.weights['geo'] +
             interest_score * self.weights['interest'] +
@@ -268,31 +269,31 @@ class RecommendationService:
     def _calculate_geo_score(self, post: Dict[str, Any],
                               user_location: Optional[Tuple[float, float]]) -> float:
         """
-        计算地理位置分数 (40%).
+        Calculate geographic location score (40%).
 
-        距离越近，分数越高:
-        - 距离 < 1km: 100 分
-        - 距离 1-5km: 80 分
-        - 距离 5-10km: 60 分
-        - 距离 10-20km: 40 分
-        - 距离 > 20km: 20 分
+        Closer distance results in higher score:
+        - Distance < 1km: 100 points
+        - Distance 1-5km: 80 points
+        - Distance 5-10km: 60 points
+        - Distance 10-20km: 40 points
+        - Distance > 20km: 20 points
 
         Args:
-            post: 帖子数据
-            user_location: 用户位置 (lat, lng)
+            post: Post data
+            user_location: User location (lat, lng)
 
         Returns:
-            地理位置分数 (0-100)
+            Geographic location score (0-100)
         """
         if not user_location:
-            return 50  # 没有位置信息，给中等分数
+            return 50  # No location info, give medium score
 
-        # 获取帖子关联的地点
+        # Get corners associated with the post
         corner_ids = post.get('corner_ids', [])
         if not corner_ids:
-            return 30  # 没有关联地点，给较低分数
+            return 30  # No associated corners, give lower score
 
-        # 计算到最近地点的距离
+        # Calculate distance to nearest corner
         min_distance = float('inf')
         for corner_id in corner_ids:
             corner = self.corner_store.get_corner_by_id(corner_id)
@@ -305,9 +306,9 @@ class RecommendationService:
                     min_distance = distance
 
         if min_distance == float('inf'):
-            return 30  # 没有找到有效地点
+            return 30  # No valid corners found
 
-        # 根据距离计算分数
+        # Calculate score based on distance
         if min_distance < 1000:  # < 1km
             return 100
         elif min_distance < 5000:  # 1-5km
@@ -322,40 +323,40 @@ class RecommendationService:
     def _calculate_interest_score(self, post: Dict[str, Any],
                                    user: Optional[Dict[str, Any]]) -> float:
         """
-        计算兴趣标签分数 (30%).
+        Calculate interest tag score (30%).
 
-        根据帖子标签和用户兴趣标签的重叠度计算:
-        - 完全匹配：100 分
-        - 部分匹配：按比例计算
-        - 无匹配：20 分
+        Calculate based on overlap between post tags and user interest tags:
+        - Complete match: 100 points
+        - Partial match: calculated proportionally
+        - No match: 20 points
 
         Args:
-            post: 帖子数据
-            user: 用户数据
+            post: Post data
+            user: User data
 
         Returns:
-            兴趣标签分数 (0-100)
+            Interest tag score (0-100)
         """
         if not user:
-            return 50  # 没有用户信息，给中等分数
+            return 50  # No user info, give medium score
 
         user_tags = set(user.get('interest_tags', []))
         post_tags = set(post.get('tags', []))
 
         if not user_tags:
-            return 50  # 用户没有设置兴趣，给中等分数
+            return 50  # User hasn't set interests, give medium score
 
         if not post_tags:
-            return 30  # 帖子没有标签，给较低分数
+            return 30  # Post has no tags, give lower score
 
-        # 计算标签重叠
+        # Calculate tag overlap
         overlap = len(user_tags & post_tags)
         total = len(post_tags)
 
         if overlap == 0:
-            return 20  # 无重叠
+            return 20  # No overlap
 
-        # 按比例计算分数
+        # Calculate score proportionally
         match_ratio = overlap / total
         score = int(match_ratio * 100)
 
@@ -364,61 +365,61 @@ class RecommendationService:
     def _calculate_social_score(self, post: Dict[str, Any],
                                  user_id: Optional[str]) -> float:
         """
-        计算社交关系分数 (20%).
+        Calculate social relationship score (20%).
 
-        - 自己的帖子：100 分
-        - 关注用户的帖子：80 分
-        - 互相关注用户的帖子：90 分
-        - 其他人的帖子：40 分
+        - Own posts: 100 points
+        - Posts from followed users: 80 points
+        - Posts from mutually followed users: 90 points
+        - Posts from others: 40 points
 
         Args:
-            post: 帖子数据
-            user_id: 用户 ID
+            post: Post data
+            user_id: User ID
 
         Returns:
-            社交关系分数 (0-100)
+            Social relationship score (0-100)
         """
         if not user_id:
-            return 40  # 未登录用户，无社交关系
+            return 40  # Not logged in, no social relationships
 
         post_user_id = str(post.get('user_id'))
 
         if post_user_id == user_id:
-            return 100  # 自己的帖子
+            return 100  # Own post
 
-        # 检查是否关注了帖子创建者
+        # Check if following post creator
         try:
             if is_following_user(user_id, post_user_id):
-                # 检查是否互相关注
+                # Check if mutually following
                 if is_following_user(post_user_id, user_id):
-                    return 90  # 互相关注
+                    return 90  # Mutually following
                 else:
-                    return 80  # 单向关注
+                    return 80  # One-way follow
             else:
-                return 40  # 无社交关系
+                return 40  # No social relationship
         except Exception:
-            return 40  # 检查失败，给默认分数
+            return 40  # Check failed, give default score
 
     def _calculate_behavior_score(self, post: Dict[str, Any],
                                    user_id: Optional[str]) -> float:
         """
-        计算行为历史分数 (10%).
+        Calculate behavior history score (10%).
 
-        基于用户的历史行为:
-        - 是否点赞过该帖子：+30 分
-        - 是否收藏过该帖子：+30 分
-        - 是否浏览过该帖子：+20 分
-        - 浏览时长：额外加分
+        Based on user's historical behavior:
+        - Whether liked the post: +30 points
+        - Whether favorited the post: +30 points
+        - Whether viewed the post: +20 points
+        - View duration: extra points
 
         Args:
-            post: 帖子数据
-            user_id: 用户 ID
+            post: Post data
+            user_id: User ID
 
         Returns:
-            行为历史分数 (0-100)
+            Behavior history score (0-100)
         """
         if not user_id:
-            return 10  # 未登录用户，无行为历史
+            return 10  # Not logged in, no behavior history
 
         try:
             user_obj = ObjectId(user_id)
@@ -426,31 +427,31 @@ class RecommendationService:
         except Exception:
             return 10
 
-        score = 10  # 基础分
+        score = 10  # Base score
 
-        # 检查点赞
+        # Check like
         try:
             if self.like_store.is_liked(user_obj, post_obj):
                 score += 30
         except Exception:
             pass
 
-        # 检查收藏
+        # Check favorite
         try:
             if self.favorite_store.is_favorite(user_obj, post_obj):
                 score += 30
         except Exception:
             pass
 
-        # 检查浏览
+        # Check view
         try:
             total_duration = self.view_history_store.get_total_view_duration(
                 user_obj, post_obj
             )
             if total_duration > 0:
                 score += 20
-                # 浏览时长加分
-                if total_duration > 10000:  # > 10 秒
+                # View duration bonus points
+                if total_duration > 10000:  # > 10 seconds
                     score += 10
         except Exception:
             pass
@@ -460,7 +461,7 @@ class RecommendationService:
     def _calculate_distance(self, location1: Tuple[float, float],
                             location2: Dict[str, Any]) -> float:
         """
-        使用 Haversine 公式计算两点之间的球面距离.
+        Calculate spherical distance between two points using Haversine formula.
 
         Args:
             location1: (lat, lng)
@@ -474,16 +475,16 @@ class RecommendationService:
         lat1, lng1 = location1
         lat2, lng2 = location2['coordinates'][1], location2['coordinates'][0]
 
-        # 转换为弧度
+        # Convert to radians
         lat1, lng1, lat2, lng2 = map(radians, [lat1, lng1, lat2, lng2])
 
-        # Haversine 公式
+        # Haversine formula
         dlat = lat2 - lat1
         dlng = lng2 - lng1
         a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
         c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
-        # 地球半径 (米)
+        # Earth radius (meters)
         r = 6371000
         return c * r
 
@@ -492,19 +493,19 @@ class RecommendationService:
                            radius: int = 10000,
                            limit: int = 10) -> List[Dict[str, Any]]:
         """
-        基于用户位置推荐可能感兴趣的地点.
+        Recommend potentially interesting corners based on user location.
 
         Args:
-            user_id: 用户 ID(可选)
-            user_location: 用户位置 (lat, lng)
-            radius: 搜索半径 (米)
-            limit: 返回地点数量
+            user_id: User ID (optional)
+            user_location: User location (lat, lng)
+            radius: Search radius (meters)
+            limit: Number of corners to return
 
         Returns:
-            推荐地点列表
+            List of recommended corners
         """
         if not user_location:
-            # 没有位置信息，返回热门地点
+            # No location info, return popular corners
             corners = self.corner_store.get_all_corners(limit=limit)
             # Convert ObjectId to string for JSON serialization
             result = []
@@ -524,15 +525,15 @@ class RecommendationService:
             latitude=lat,
             longitude=lng,
             max_distance=radius,
-            limit=limit * 2  # 获取更多以便排序
+            limit=limit * 2  # Get more for sorting
         )
 
-        # 统计每个地点的帖子数量
+        # Count posts for each corner
         result = []
         for corner in corners:
             post_count = self.post_store.count_posts_by_corner(corner['_id'])
 
-            # 计算距离
+            # Calculate distance
             distance = self._calculate_distance(
                 user_location,
                 corner['location']
@@ -549,7 +550,7 @@ class RecommendationService:
             }
             result.append(corner_data)
 
-        # 按帖子数量和距离综合排序
+        # Sort comprehensively by post count and distance
         result.sort(key=lambda x: (x['post_count'], -x['distance']), reverse=True)
 
         return result[:limit]
@@ -557,10 +558,10 @@ class RecommendationService:
 
 def get_recommendation_service() -> RecommendationService:
     """
-    获取推荐服务实例 (单例模式).
+    Get recommendation service instance (singleton pattern).
 
     Returns:
-        RecommendationService 实例
+        RecommendationService instance
     """
     if not hasattr(get_recommendation_service, '_instance'):
         get_recommendation_service._instance = RecommendationService()

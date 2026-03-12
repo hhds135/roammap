@@ -1,4 +1,4 @@
-"""Feed system endpoints - 信息流管理."""
+"""Feed system endpoints."""
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
 
@@ -17,7 +17,7 @@ recommendation_service = get_recommendation_service()
 
 def expand_post_feed_data(post):
     """
-    扩展帖子数据以用于信息流展示。
+    Expand post data for feed display.
 
     Args:
         post: Post document
@@ -60,12 +60,12 @@ def expand_post_feed_data(post):
 @jwt_required
 def get_following_feed():
     """
-    获取当前用户关注的所有用户发布的最新帖子。
+    Get latest posts from all users followed by current user.
 
     Query parameters:
-        - limit: 每页数量（默认 20）
-        - skip: 跳过数量（用于分页）
-        - include_own: 是否包含自己的帖子（默认 true）
+        - limit: Number of posts per page (default 20)
+        - skip: Number of posts to skip (for pagination)
+        - include_own: Whether to include own posts (default true)
 
     Returns:
         JSON with posts list
@@ -163,7 +163,7 @@ def get_following_feed():
 @jwt_required
 def get_feed_status():
     """
-    获取当前用户的关注状态摘要。
+    Get follow status summary for current user.
 
     Returns:
         JSON with status summary
@@ -201,11 +201,11 @@ def get_feed_status():
 @jwt_optional
 def get_public_feed():
     """
-    获取公开帖子流（无需登录）。
+    Get public posts feed (no login required).
 
     Query parameters:
-        - limit: 每页数量（默认 20）
-        - skip: 跳过数量（用于分页）
+        - limit: Number of posts per page (default 20)
+        - skip: Number of posts to skip (for pagination)
 
     Returns:
         JSON with public posts
@@ -266,13 +266,13 @@ def get_public_feed():
 @jwt_optional
 def get_comprehensive_feed():
     """
-    获取综合信息流,混合推荐帖子和关注用户的帖子.
+    Get comprehensive feed, mixing recommended posts and posts from followed users.
 
     Query parameters:
-        - type: 信息流类型 (all, recommendation, following, 默认 all)
-        - lat: 用户当前纬度(可选)
-        - lng: 用户当前经度(可选)
-        - limit: 返回帖子数量(默认 20)
+        - type: Feed type (all, recommendation, following, default all)
+        - lat: User's current latitude (optional)
+        - lng: User's current longitude (optional)
+        - limit: Number of posts to return (default 20)
 
     Returns:
         JSON with feed posts

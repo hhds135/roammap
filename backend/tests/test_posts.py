@@ -371,12 +371,12 @@ class TestPostCreation:
             'description': 'Test description',
             'media_type': 'image',
             'media_files': [file_id],
-            'tags': ['美食', '咖啡', '周末'],
+            'tags': ['food', 'coffee', 'weekend'],
             'visibility': 'public'
         }, auth_token=token)
 
         assert post_data['success'] is True
-        assert '美食' in post_data['data']['tags']
+        assert 'food' in post_data['data']['tags']
 
 
 # ==================== Post Retrieval Tests ====================
@@ -793,12 +793,12 @@ class TestUserInterestTags:
 
         # Update interests
         _, update_data = api_client.put_json(f'/api/users/{user_id}/interests', {
-            'interest_tags': ['美食', '旅行', '摄影']
+            'interest_tags': ['food', 'travel', 'photography']
         }, auth_token=token)
 
         assert update_data['success'] is True
-        assert '美食' in update_data['data']['interest_tags']
-        assert '旅行' in update_data['data']['interest_tags']
+        assert 'food' in update_data['data']['interest_tags']
+        assert 'travel' in update_data['data']['interest_tags']
 
     def test_update_other_user_interests_fails(self, api_client, multiple_registered_users):
         """Test that updating another user's interests fails."""
@@ -809,7 +809,7 @@ class TestUserInterestTags:
 
         # Try to update user 2's interests
         response, data = api_client.put_json(f'/api/users/{user2_id}/interests', {
-            'interest_tags': ['美食']
+            'interest_tags': ['food']
         }, auth_token=token1)
 
         assert response.status_code == 403

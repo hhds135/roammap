@@ -1,4 +1,4 @@
-"""Recommendation endpoints - 推荐算法API."""
+"""Recommendation endpoints."""
 from flask import Blueprint, request, jsonify
 
 from services.recommendation_service import get_recommendation_service
@@ -17,14 +17,14 @@ user_store = UserStore()
 @jwt_optional
 def get_recommendation_feed():
     """
-    获取个性化推荐信息流.
+    Get personalized recommendation feed.
 
-    基于用户位置、兴趣、社交关系和行为历史,获取个性化推荐帖子流.
+    Get personalized recommended post feed based on user location, interests, social relationships, and behavior history.
 
     Query parameters:
-        - lat: 用户当前纬度(可选)
-        - lng: 用户当前经度(可选)
-        - limit: 返回帖子数量(默认 20)
+        - lat: User's current latitude (optional)
+        - lng: User's current longitude (optional)
+        - limit: Number of posts to return (default 20)
 
     Returns:
         JSON with recommended posts list
@@ -108,15 +108,15 @@ def get_recommendation_feed():
 @jwt_optional
 def get_recommendation_corners():
     """
-    获取推荐地点.
+    Get recommended corners.
 
-    基于用户位置和兴趣,推荐可能感兴趣的地点.
+    Recommend corners that may be of interest based on user location and interests.
 
     Query parameters:
-        - lat: 用户当前纬度(可选)
-        - lng: 用户当前经度(可选)
-        - radius: 搜索半径(米,默认 10000)
-        - limit: 返回地点数量(默认 10)
+        - lat: User's current latitude (optional)
+        - lng: User's current longitude (optional)
+        - radius: Search radius in meters (default 10000)
+        - limit: Number of corners to return (default 10)
 
     Returns:
         JSON with recommended corners list
@@ -185,7 +185,7 @@ def get_recommendation_corners():
 @bp.route('/api/recommendations/config', methods=['GET'])
 def get_recommendation_config():
     """
-    获取推荐算法的权重配置(调试用).
+    Get recommendation algorithm weight configuration (for debugging).
 
     Returns:
         JSON with recommendation weights
@@ -214,7 +214,7 @@ def get_recommendation_config():
 @jwt_required
 def get_recommendation_stats():
     """
-    获取推荐算法的统计信息.
+    Get recommendation algorithm statistics.
 
     Returns:
         JSON with recommendation statistics

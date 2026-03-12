@@ -1,4 +1,4 @@
-"""View history tracking endpoints - 浏览历史追踪."""
+"""View history tracking endpoints."""
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
@@ -32,13 +32,13 @@ VIEW_HISTORY_TTL_DAYS = 30
 @jwt_required
 def record_post_view(post_id):
     """
-    记录用户浏览帖子的行为。
+    Record user's post viewing behavior.
 
     Args:
-        post_id: 帖子 ID
+        post_id: Post ID
 
     Request body (JSON):
-        - view_duration: 浏览时长(毫秒,可选)
+        - view_duration: View duration in milliseconds (optional)
 
     Returns:
         JSON with view record data
@@ -91,15 +91,15 @@ def record_post_view(post_id):
 @jwt_required
 def get_user_view_history(user_id):
     """
-    获取用户的浏览历史记录。
+    Get user's viewing history.
 
     Args:
-        user_id: 用户 ID
+        user_id: User ID
 
     Query parameters:
-        - limit: 每页数量(默认 20)
-        - skip: 跳过数量(用于分页)
-        - min_duration: 最小浏览时长过滤(毫秒,默认 1000)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
+        - min_duration: Minimum view duration filter in milliseconds (default 1000)
 
     Returns:
         JSON with view history list
@@ -178,11 +178,11 @@ def get_user_view_history(user_id):
 @jwt_optional
 def get_trending_posts():
     """
-    获取浏览次数最多的热门帖子。
+    Get trending posts with most views.
 
     Query parameters:
-        - time_range: 时间范围(1h, 6h, 24h, 7d,默认 24h)
-        - limit: 返回数量(默认 10)
+        - time_range: Time range (1h, 6h, 24h, 7d, default 24h)
+        - limit: Number of posts to return (default 10)
 
     Returns:
         JSON with trending posts
@@ -263,10 +263,10 @@ def get_trending_posts():
 @jwt_optional
 def get_post_view_stats(post_id):
     """
-    获取帖子的浏览统计信息。
+    Get viewing statistics for a post.
 
     Args:
-        post_id: 帖子 ID
+        post_id: Post ID
 
     Returns:
         JSON with view statistics

@@ -38,18 +38,18 @@ class TestCompleteUserFlow:
         # 3. Set user interest tags
         response = client.put(
             f'/api/users/{user_id}/interests',
-            json={'interest_tags': ['美食', '咖啡', '旅行']},
+            json={'interest_tags': ['food', 'coffee', 'travel']},
             headers=headers
         )
         assert response.status_code == 200
 
         # 4. Create corners
         corner1_data = {
-            'name': '老巷咖啡馆',
-            'description': '一家安静的咖啡馆',
+            'name': 'Old Alley Cafe',
+            'description': 'A quiet cafe',
             'latitude': 31.2304,
             'longitude': 121.4737,
-            'address': '上海市黄浦区老巷1号'
+            'address': 'No. 1 Old Alley, Huangpu District, Shanghai'
         }
         response = client.post('/api/corners', json=corner1_data, headers=headers)
         assert response.status_code == 201
@@ -57,11 +57,11 @@ class TestCompleteUserFlow:
         corner1_id = corner1['_id']
 
         corner2_data = {
-            'name': '小巷餐厅',
-            'description': '地道的上海菜',
+            'name': 'Small Lane Restaurant',
+            'description': 'Authentic Shanghai cuisine',
             'latitude': 31.2404,
             'longitude': 121.4837,
-            'address': '上海市黄浦区小巷2号'
+            'address': 'No. 2 Small Lane, Huangpu District, Shanghai'
         }
         response = client.post('/api/corners', json=corner2_data, headers=headers)
         assert response.status_code == 201
@@ -100,15 +100,15 @@ class TestCompleteUserFlow:
 
         # 6. Create post with route
         post_data = {
-            'title': '周末咖啡店之旅',
-            'description': '探索了两家很有特色的店铺',
+            'title': 'Weekend Cafe Tour',
+            'description': 'Explored two unique shops',
             'corner_ids': [corner1_id, corner2_id],
             'media_type': 'image',
             'media_files': [image_id],
-            'tags': ['美食', '咖啡'],
+            'tags': ['food', 'coffee'],
             'visibility': 'public',
             'route': {
-                'route_name': '周末咖啡店之旅',
+                'route_name': 'Weekend Cafe Tour',
                 'corner_ids': [corner1_id, corner2_id]
             }
         }
@@ -121,17 +121,17 @@ class TestCompleteUserFlow:
         response = client.get(f'/api/posts/{post_id}', headers=headers)
         assert response.status_code == 200
         post_detail = response.get_json()['data']
-        assert post_detail['title'] == '周末咖啡店之旅'
-        assert post_detail['route']['route_name'] == '周末咖啡店之旅'
+        assert post_detail['title'] == 'Weekend Cafe Tour'
+        assert post_detail['route']['route_name'] == 'Weekend Cafe Tour'
 
         # 8. Get post route details
         response = client.get(f'/api/posts/{post_id}/route', headers=headers)
         assert response.status_code == 200
         route_data = response.get_json()['data']['route']
-        assert route_data['route_name'] == '周末咖啡店之旅'
+        assert route_data['route_name'] == 'Weekend Cafe Tour'
         assert len(route_data['corners']) == 2
-        assert route_data['corners'][0]['name'] == '老巷咖啡馆'
-        assert route_data['corners'][1]['name'] == '小巷餐厅'
+        assert route_data['corners'][0]['name'] == 'Old Alley Cafe'
+        assert route_data['corners'][1]['name'] == 'Small Lane Restaurant'
 
         # 9. Query nearby corners
         response = client.get(
@@ -154,11 +154,11 @@ class TestCompleteUserFlow:
         assert aggregate_data[0]['post_count'] >= 1
 
         # 11. Search corners
-        response = client.get('/api/corners/search?q=咖啡', headers=headers)
+        response = client.get('/api/corners/search?q=cafe', headers=headers)
         assert response.status_code == 200
         search_results = response.get_json()['data']['corners']
         corner_names = [c['name'] for c in search_results]
-        assert '老巷咖啡馆' in corner_names
+        assert 'Old Alley Cafe' in corner_names
 
         # 12. Get comprehensive feed
         response = client.get(
@@ -223,8 +223,8 @@ class TestFollowAndFeedFlow:
 
         # 3. user1 creates a post
         corner_data = {
-            'name': '测试地点',
-            'description': '用于测试的地点',
+            'name': 'Test Location',
+            'description': 'Location for testing',
             'latitude': 31.2304,
             'longitude': 121.4737
         }
@@ -263,8 +263,8 @@ class TestFollowAndFeedFlow:
 
         # Create post
         post_data = {
-            'title': '测试帖子',
-            'description': '用于测试的帖子',
+            'title': 'Test Post',
+            'description': 'Post for testing',
             'corner_ids': [corner_id],
             'media_type': 'image',
             'media_files': [image_id],
@@ -331,18 +331,18 @@ class TestRecommendationFlow:
         # 2. Set user interests
         response = client.put(
             f'/api/users/{user_id}/interests',
-            json={'interest_tags': ['美食', '咖啡']},
+            json={'interest_tags': ['food', 'coffee']},
             headers=headers
         )
         assert response.status_code == 200
 
         # 3. Create corners at specific locations
         corner1_data = {
-            'name': '附近咖啡馆',
-            'description': '很近的咖啡馆',
+            'name': 'Nearby Cafe',
+            'description': 'A cafe nearby',
             'latitude': 31.2305,
             'longitude': 121.4738,
-            'tags': ['咖啡', '美食']
+            'tags': ['coffee', 'food']
         }
         response = client.post('/api/corners', json=corner1_data, headers=headers)
         assert response.status_code == 201
@@ -377,12 +377,12 @@ class TestRecommendationFlow:
         image_id = response.get_json()['data']['file_id']
 
         post_data = {
-            'title': '附近咖啡馆推荐',
-            'description': '这家咖啡馆很棒',
+            'title': 'Nearby Cafe Recommendation',
+            'description': 'This cafe is great',
             'corner_ids': [corner1['_id']],
             'media_type': 'image',
             'media_files': [image_id],
-            'tags': ['美食', '咖啡'],
+            'tags': ['food', 'coffee'],
             'visibility': 'public'
         }
         response = client.post('/api/posts', json=post_data, headers=headers)
@@ -498,7 +498,7 @@ class TestPostVisibilityFlow:
         # 4. Create posts with different visibility
         # Public post
         public_post_data = {
-            'title': '公开帖子',
+            'title': 'Public Post',
             'media_type': 'image',
             'media_files': [image_id],
             'visibility': 'public'
@@ -509,7 +509,7 @@ class TestPostVisibilityFlow:
 
         # Private post
         private_post_data = {
-            'title': '私密帖子',
+            'title': 'Private Post',
             'media_type': 'image',
             'media_files': [image_id],
             'visibility': 'private'
@@ -520,7 +520,7 @@ class TestPostVisibilityFlow:
 
         # Followers-only post
         followers_post_data = {
-            'title': '关注者帖子',
+            'title': 'Followers Post',
             'media_type': 'image',
             'media_files': [image_id],
             'visibility': 'followers'
@@ -578,8 +578,8 @@ class TestFeedTypesFlow:
 
         # 2. Create corner and post
         corner_data = {
-            'name': '测试地点',
-            'description': '用于测试',
+            'name': 'Test Location',
+            'description': 'For testing',
             'latitude': 31.2304,
             'longitude': 121.4737
         }
@@ -616,7 +616,7 @@ class TestFeedTypesFlow:
         image_id = response.get_json()['data']['file_id']
 
         post_data = {
-            'title': '测试帖子',
+            'title': 'Test Post',
             'media_type': 'image',
             'media_files': [image_id],
             'visibility': 'public'

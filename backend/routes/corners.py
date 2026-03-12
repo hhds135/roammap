@@ -1,4 +1,4 @@
-"""Corner management endpoints - 地点管理."""
+"""Corner management endpoints."""
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
@@ -72,11 +72,11 @@ def validate_corner_data(data, is_update=False):
 @jwt_optional
 def get_corners():
     """
-    获取地点列表，支持过滤和搜索。
+    Get list of corners, supports filtering and search.
 
     Query parameters:
-        - limit: 返回数量限制(默认 100)
-        - search: 搜索关键词(匹配名称或描述)
+        - limit: Maximum number of results to return (default 100)
+        - search: Search keyword (matches name or description)
 
     Returns:
         JSON with corners list
@@ -121,15 +121,15 @@ def get_corners():
 @jwt_required
 def create_corner():
     """
-    创建新地点。
+    Create a new corner.
 
     Request body (JSON):
-        - name: 地点名称(必填)
-        - description: 地点描述
-        - latitude: 纬度(必填, -90 到 90)
-        - longitude: 经度(必填, -180 到 180)
-        - address: 地址
-        - tags: 标签列表
+        - name: Corner name (required)
+        - description: Corner description
+        - latitude: Latitude (required, -90 to 90)
+        - longitude: Longitude (required, -180 to 180)
+        - address: Address
+        - tags: List of tags
 
     Returns:
         JSON with created corner data
@@ -192,10 +192,10 @@ def create_corner():
 @bp.route('/api/corners/<corner_id>', methods=['GET'])
 def get_corner_detail(corner_id):
     """
-    获取地点详情。
+    Get corner details.
 
     Args:
-        corner_id: 地点 ID
+        corner_id: Corner ID
 
     Returns:
         JSON with corner detail
@@ -227,18 +227,18 @@ def get_corner_detail(corner_id):
 @jwt_required
 def update_corner(corner_id):
     """
-    更新地点信息。
+    Update corner information.
 
     Args:
-        corner_id: 地点 ID
+        corner_id: Corner ID
 
     Request body (JSON):
-        - name: 地点名称
-        - description: 地点描述
-        - latitude: 纬度
-        - longitude: 经度
-        - address: 地址
-        - tags: 标签列表
+        - name: Corner name
+        - description: Corner description
+        - latitude: Latitude
+        - longitude: Longitude
+        - address: Address
+        - tags: List of tags
 
     Returns:
         JSON with updated corner data
@@ -315,10 +315,10 @@ def update_corner(corner_id):
 @jwt_required
 def delete_corner(corner_id):
     """
-    删除地点。
+    Delete a corner.
 
     Args:
-        corner_id: 地点 ID
+        corner_id: Corner ID
 
     Returns:
         JSON with success message
@@ -348,13 +348,13 @@ def delete_corner(corner_id):
 @jwt_optional
 def get_nearby_corners():
     """
-    查询附近地点。
+    Query nearby corners.
 
     Query parameters:
-        - lat: 纬度(必填, -90 到 90)
-        - lng: 经度(必填, -180 到 180)
-        - radius: 搜索半径(米,默认 10000,即 10km)
-        - limit: 返回数量限制(默认 20)
+        - lat: Latitude (required, -90 to 90)
+        - lng: Longitude (required, -180 to 180)
+        - radius: Search radius in meters (default 10000, i.e., 10km)
+        - limit: Maximum number of results (default 20)
 
     Returns:
         JSON with nearby corners sorted by distance
@@ -434,14 +434,14 @@ def get_nearby_corners():
 @jwt_optional
 def get_corner_posts(corner_id):
     """
-    获取关联指定地点的所有帖子。
+    Get all posts associated with a specific corner.
 
     Args:
-        corner_id: 地点 ID
+        corner_id: Corner ID
 
     Query parameters:
-        - limit: 每页数量(默认 20)
-        - skip: 跳过数量(用于分页)
+        - limit: Number of posts per page (default 20)
+        - skip: Number of posts to skip (for pagination)
 
     Returns:
         JSON with corner info and posts list
@@ -524,10 +524,10 @@ def get_corner_posts(corner_id):
 @jwt_optional
 def get_corners_aggregate():
     """
-    获取多个地点的聚合信息,包括帖子数量、热度等.
+    Get aggregate information for multiple corners, including post count, popularity, etc.
 
     Query parameters:
-        - corner_ids: 逗号分隔的地点 ID 列表(必填)
+        - corner_ids: Comma-separated list of corner IDs (required)
 
     Returns:
         JSON with corners aggregate information
@@ -640,11 +640,11 @@ def get_corners_aggregate():
 @jwt_optional
 def search_corners():
     """
-    根据名称或描述搜索地点.
+    Search corners by name or description.
 
     Query parameters:
-        - q: 搜索关键词(必填)
-        - limit: 返回数量(默认 20)
+        - q: Search keyword (required)
+        - limit: Maximum number of results (default 20)
 
     Returns:
         JSON with matching corners
