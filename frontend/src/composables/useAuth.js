@@ -12,7 +12,7 @@ export function useAuth() {
 
   const isAuthenticated = computed(() => !!token.value);
 
-  // 加载用户信息
+  // Load user info
   const loadUser = () => {
     const storedUser = storage.getUser();
     const storedToken = storage.getToken();
@@ -22,7 +22,7 @@ export function useAuth() {
     }
   };
 
-  // 登录
+  // Login
   const login = async (username, password) => {
     loading.value = true;
     error.value = null;
@@ -36,16 +36,16 @@ export function useAuth() {
         token.value = response.token;
         return { success: true };
       }
-      return { success: false, message: '登录失败' };
+      return { success: false, message: 'Login failed' };
     } catch (err) {
-      error.value = err.error?.message || '登录失败';
+      error.value = err.error?.message || 'Login failed';
       return { success: false, message: error.value };
     } finally {
       loading.value = false;
     }
   };
 
-  // 注册
+  // Register
   const register = async (username, password) => {
     loading.value = true;
     error.value = null;
@@ -59,16 +59,16 @@ export function useAuth() {
         token.value = response.token;
         return { success: true };
       }
-      return { success: false, message: '注册失败' };
+      return { success: false, message: 'Registration failed' };
     } catch (err) {
-      error.value = err.error?.message || '注册失败';
+      error.value = err.error?.message || 'Registration failed';
       return { success: false, message: error.value };
     } finally {
       loading.value = false;
     }
   };
 
-  // 登出
+  // Logout
   const logout = () => {
     authApi.logout();
     user.value = null;

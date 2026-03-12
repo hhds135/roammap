@@ -3,7 +3,7 @@
 </template>
 
 <script setup>
-// 根组件
+// Root component
 </script>
 
 <style>
