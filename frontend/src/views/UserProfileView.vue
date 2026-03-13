@@ -5,19 +5,32 @@
       <div class="profile-header">
         <div class="avatar">{{ user?.username?.charAt(0).toUpperCase() || 'U' }}</div>
         <div class="user-info">
-          <h1>{{ user?.username || 'Unknown User' }}</h1>
+          <div class="user-name-row">
+            <h1>{{ user?.username || 'Unknown User' }}</h1>
+            <button v-if="isSelf" @click="handleLogout" class="logout-btn">
+              Logout
+            </button>
+          </div>
           <div class="stats">
-            <div class="stat-item">
+            <div class="stat-item clickable" @click="switchTab('posts')">
+              <span class="stat-number">{{ postsCount }}</span>
+              <span class="stat-label">Posts</span>
+            </div>
+            <div v-if="isSelf" class="stat-item clickable" @click="switchTab('corners')">
+              <span class="stat-number">{{ cornersCount }}</span>
+              <span class="stat-label">Corners</span>
+            </div>
+            <div class="stat-item clickable" @click="switchTab('following')">
               <span class="stat-number">{{ followingCount }}</span>
               <span class="stat-label">Following</span>
             </div>
-            <div class="stat-item">
+            <div class="stat-item clickable" @click="switchTab('followers')">
               <span class="stat-number">{{ followersCount }}</span>
               <span class="stat-label">Followers</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-number">{{ postsCount }}</span>
-              <span class="stat-label">Posts</span>
+            <div v-if="isSelf" class="stat-item clickable" @click="switchTab('favorites')">
+              <span class="stat-number">{{ favoritesCount }}</span>
+              <span class="stat-label">Favorites</span>
             </div>
           </div>
         </div>
@@ -38,8 +51,46 @@
         </div>
       </div>
 
+      <!-- Tabs -->
+      <div class="tabs-section">
+        <div class="tabs">
+          <button
+            :class="['tab-btn', { active: activeTab === 'posts' }]"
+            @click="switchTab('posts')"
+          >
+            Posts
+          </button>
+          <button
+            v-if="isSelf"
+            :class="['tab-btn', { active: activeTab === 'corners' }]"
+            @click="switchTab('corners')"
+          >
+            Corners
+          </button>
+          <button
+            :class="['tab-btn', { active: activeTab === 'following' }]"
+            @click="switchTab('following')"
+          >
+            Following
+          </button>
+          <button
+            :class="['tab-btn', { active: activeTab === 'followers' }]"
+            @click="switchTab('followers')"
+          >
+            Followers
+          </button>
+          <button
+            v-if="isSelf"
+            :class="['tab-btn', { active: activeTab === 'favorites' }]"
+            @click="switchTab('favorites')"
+          >
+            Favorites
+          </button>
+        </div>
+      </div>
+
       <!-- User's Posts -->
-      <div class="posts-section">
+      <div v-if="user && activeTab === 'posts'" class="posts-section">
         <h3>{{ isSelf ? 'My Posts' : 'Posts' }}</h3>
         <div v-if="loading" class="loading">
           <div class="spinner"></div>
@@ -53,6 +104,122 @@
             v-for="post in posts"
             :key="post._id"
             :post="post"
+            compact
+            @deleted="handlePostDeleted"
+          />
+        </div>
+      </div>
+
+      <!-- User's Corners (only for self) -->
+      <div v-if="user && isSelf && activeTab === 'corners'" class="corners-section">
+        <h3>My Corners</h3>
+        <div v-if="loadingCorners" class="loading">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div v-else-if="corners.length === 0" class="empty-state">
+          <p>No corners created yet</p>
+        </div>
+        <div v-else class="corners-list">
+          <div
+            v-for="corner in corners"
+            :key="corner._id"
+            class="corner-item"
+            @click="goToMap(corner)"
+          >
+            <div class="corner-images">
+              <img
+                v-if="corner.images && corner.images.length > 0"
+                :src="getMediaUrl(corner.images[0])"
+                :alt="corner.name"
+              />
+              <div v-else class="corner-placeholder">
+                <span class="placeholder-icon">📍</span>
+              </div>
+            </div>
+            <div class="corner-info">
+              <h4 class="corner-name">{{ corner.name }}</h4>
+              <p v-if="corner.description" class="corner-description">{{ corner.description }}</p>
+              <div class="corner-meta">
+                <span class="corner-posts">{{ corner.postCount || 0 }} posts</span>
+                <button 
+                  @click.stop="editCorner(corner)" 
+                  class="edit-corner-btn"
+                >
+                  Edit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Following List -->
+      <div v-if="user && activeTab === 'following'" class="users-section">
+        <h3>Following</h3>
+        <div v-if="loadingFollowing" class="loading">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div v-else-if="followingList.length === 0" class="empty-state">
+          <p>Not following anyone yet</p>
+        </div>
+        <div v-else class="users-list">
+          <div
+            v-for="followedUser in followingList"
+            :key="followedUser.user_id"
+            class="user-item"
+            @click="goToProfile(followedUser.user_id)"
+          >
+            <div class="user-avatar">{{ followedUser.username.charAt(0).toUpperCase() }}</div>
+            <div class="user-details">
+              <span class="user-name">{{ followedUser.username }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Followers List -->
+      <div v-if="user && activeTab === 'followers'" class="users-section">
+        <h3>Followers</h3>
+        <div v-if="loadingFollowers" class="loading">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div v-else-if="followersList.length === 0" class="empty-state">
+          <p>No followers yet</p>
+        </div>
+        <div v-else class="users-list">
+          <div
+            v-for="follower in followersList"
+            :key="follower.user_id"
+            class="user-item"
+            @click="goToProfile(follower.user_id)"
+          >
+            <div class="user-avatar">{{ follower.username.charAt(0).toUpperCase() }}</div>
+            <div class="user-details">
+              <span class="user-name">{{ follower.username }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Favorites List -->
+      <div v-if="user && isSelf && activeTab === 'favorites'" class="favorites-section">
+        <h3>My Favorites</h3>
+        <div v-if="loadingFavorites" class="loading">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+        <div v-else-if="favorites.length === 0" class="empty-state">
+          <p>No favorites yet</p>
+        </div>
+        <div v-else class="posts-list">
+          <PostCard
+            v-for="post in favorites"
+            :key="post._id"
+            :post="post"
+            compact
           />
         </div>
       </div>
@@ -61,28 +228,61 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useRoute } from 'vue-router';
 import { useAuth } from '../composables/useAuth';
 import { followsApi } from '../api/follows';
 import { postsApi } from '../api/posts';
+import { cornersApi } from '../api/corners';
 import { usersApi } from '../api/users';
+import { favoritesApi } from '../api/favorites';
+import { mediaApi } from '../api/media';
 import PostCard from '../components/Feed/PostCard.vue';
 import FollowButton from '../components/User/FollowButton.vue';
 
+const router = useRouter();
 const route = useRoute();
-const { user: currentUser } = useAuth();
+const { user: currentUser, logout } = useAuth();
 
 const user = ref(null);
 const posts = ref([]);
+const corners = ref([]);
+const followingList = ref([]);
+const followersList = ref([]);
+const favorites = ref([]);
 const followingCount = ref(0);
 const followersCount = ref(0);
 const postsCount = ref(0);
+const cornersCount = ref(0);
+const favoritesCount = ref(0);
 const loading = ref(false);
+const loadingCorners = ref(false);
+const loadingFollowing = ref(false);
+const loadingFollowers = ref(false);
+const loadingFavorites = ref(false);
+const activeTab = ref('posts');
 
 const isSelf = computed(() => {
-  return currentUser.value?.id === route.params.userId || false;
+  return !route.params.userId || currentUser.value?.id === route.params.userId;
 });
+
+const switchTab = (tab) => {
+  activeTab.value = tab;
+  const userId = user.value?.id || currentUser.value?.id;
+  
+  if (!userId) return;
+
+  if (tab === 'corners' && corners.value.length === 0) {
+    loadUserCorners(userId);
+  } else if (tab === 'following' && followingList.value.length === 0) {
+    loadFollowing(userId);
+  } else if (tab === 'followers' && followersList.value.length === 0) {
+    loadFollowers(userId);
+  } else if (tab === 'favorites' && favorites.value.length === 0 && isSelf.value) {
+    loadFavorites();
+  }
+};
 
 const loadUserProfile = async () => {
   const userId = route.params.userId;
@@ -118,10 +318,11 @@ const loadUserProfile = async () => {
 
 const loadUserStats = async (userId) => {
   try {
-    const [following, followers, postsResponse] = await Promise.all([
+    const [following, followers, postsResponse, cornersResponse] = await Promise.all([
       followsApi.getFollowing(userId, { limit: 1 }),
       followsApi.getFollowers(userId, { limit: 1 }),
-      postsApi.list({ user_id: userId, limit: 1 })
+      postsApi.list({ user_id: userId, limit: 1 }),
+      cornersApi.getAll({ limit: 1 })
     ]);
 
     if (following.success) {
@@ -132,6 +333,17 @@ const loadUserStats = async (userId) => {
     }
     if (postsResponse.success) {
       postsCount.value = postsResponse.data?.total || 0;
+    }
+    if (cornersResponse.success && cornersResponse.data?.corners) {
+      cornersCount.value = cornersResponse.data.total || 0;
+    }
+    
+    // Load favorites count only for own profile
+    if (isSelf.value) {
+      const favoritesResponse = await favoritesApi.getUserFavorites(userId, { limit: 1 });
+      if (favoritesResponse.success && favoritesResponse.data?.favorites) {
+        favoritesCount.value = favoritesResponse.data.favorites.length;
+      }
     }
   } catch (err) {
     console.error('Failed to load user stats:', err);
@@ -157,16 +369,165 @@ const loadUserPosts = async (userId) => {
   }
 };
 
+const loadUserCorners = async (userId) => {
+  loadingCorners.value = true;
+  try {
+    // Get corners created by this user only
+    const response = await cornersApi.getAll({ 
+      user_id: userId,
+      limit: 100 
+    });
+    
+    if (response.success && response.data?.corners) {
+      corners.value = response.data.corners;
+    }
+  } catch (err) {
+    console.error('Failed to load user corners:', err);
+  } finally {
+    loadingCorners.value = false;
+  }
+};
+
+const loadFollowing = async (userId) => {
+  loadingFollowing.value = true;
+  try {
+    const response = await followsApi.getFollowing(userId, { limit: 100 });
+    if (response.success && response.data?.following) {
+      followingList.value = response.data.following;
+    }
+  } catch (err) {
+    console.error('Failed to load following:', err);
+  } finally {
+    loadingFollowing.value = false;
+  }
+};
+
+const loadFollowers = async (userId) => {
+  loadingFollowers.value = true;
+  try {
+    const response = await followsApi.getFollowers(userId, { limit: 100 });
+    if (response.success && response.data?.followers) {
+      followersList.value = response.data.followers;
+    }
+  } catch (err) {
+    console.error('Failed to load followers:', err);
+  } finally {
+    loadingFollowers.value = false;
+  }
+};
+
+const loadFavorites = async () => {
+  if (!currentUser.value) return;
+  
+  loadingFavorites.value = true;
+  try {
+    const response = await favoritesApi.getUserFavorites(currentUser.value.id, { limit: 50 });
+    if (response.success && response.data?.favorites) {
+      // Get post details for each favorite
+      const favoriteIds = response.data.favorites.map(f => f.post_id);
+      favoritesCount.value = favoriteIds.length;
+      
+      if (favoriteIds.length === 0) {
+        favorites.value = [];
+        return;
+      }
+      
+      // Batch fetch posts
+      const postsResponse = await Promise.all(
+        favoriteIds.map(id => postsApi.get(id))
+      );
+      
+      favorites.value = postsResponse
+        .filter(r => r.success && r.data)
+        .map(r => r.data);
+    }
+  } catch (err) {
+    console.error('Failed to load favorites:', err);
+  } finally {
+    loadingFavorites.value = false;
+  }
+};
+
+const handleLogout = () => {
+  if (confirm('Are you sure you want to log out?')) {
+    logout();
+  }
+};
+
+const handlePostDeleted = (postId) => {
+  const index = posts.value.findIndex(p => p._id === postId);
+  if (index > -1) {
+    posts.value.splice(index, 1);
+    postsCount.value = Math.max(0, postsCount.value - 1);
+  }
+};
+
+const goToMap = (corner) => {
+  router.push({
+    path: '/map',
+    query: {
+      corner_id: corner._id,
+      lat: corner.location?.coordinates[1],
+      lng: corner.location?.coordinates[0]
+    }
+  });
+};
+
+const editCorner = (corner) => {
+  router.push({
+    path: `/edit-corner/${corner._id}`
+  });
+};
+
+const getMediaUrl = (fileId) => {
+  return mediaApi.getUrl(fileId);
+};
+
 onMounted(() => {
   loadUserProfile();
+  if (isSelf.value) {
+    loadUserCorners(currentUser.value.id);
+  }
 });
+
+// Watch for route param changes to reload profile
+watch(() => route.params.userId, (newUserId, oldUserId) => {
+  if (newUserId !== oldUserId) {
+    // Reset state
+    user.value = null;
+    posts.value = [];
+    corners.value = [];
+    followingList.value = [];
+    followersList.value = [];
+    favorites.value = [];
+    followingCount.value = 0;
+    followersCount.value = 0;
+    postsCount.value = 0;
+    cornersCount.value = 0;
+    favoritesCount.value = 0;
+    activeTab.value = 'posts';
+    
+    // Load new profile
+    loadUserProfile();
+    if (!newUserId || currentUser.value?.id === newUserId) {
+      loadUserCorners(currentUser.value.id);
+    }
+  }
+});
+
+const goToProfile = (userId) => {
+  router.push({
+    path: `/profile/${userId}`
+  });
+};
 </script>
 
 <style scoped>
 .user-profile-view {
-  min-height: 100vh;
+  height: 100%;
   background: #f5f7fa;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .profile-container {
@@ -205,8 +566,15 @@ onMounted(() => {
   flex: 1;
 }
 
-.user-info h1 {
-  margin: 0 0 16px 0;
+.user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.user-name-row h1 {
+  margin: 0;
   font-size: 24px;
   color: #333;
 }
@@ -222,10 +590,23 @@ onMounted(() => {
   align-items: center;
 }
 
+.stat-item.clickable {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.stat-item.clickable:hover {
+  opacity: 0.7;
+}
+
 .stat-number {
   font-size: 20px;
   font-weight: 600;
   color: #333;
+}
+
+.stat-icon {
+  font-size: 20px;
 }
 
 .stat-label {
@@ -238,6 +619,25 @@ onMounted(() => {
   margin-bottom: 24px;
   display: flex;
   justify-content: center;
+}
+
+.logout-btn {
+  margin-left: auto;
+  padding: 6px 16px;
+  background: #f56c6c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.logout-btn:hover {
+  background: #e63946;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(245, 108, 108, 0.3);
 }
 
 .interests-section {
@@ -268,15 +668,155 @@ onMounted(() => {
   font-size: 13px;
 }
 
+/* Tabs */
+.tabs-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: #f5f5f5;
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s;
+}
+
+.tab-btn:hover {
+  background: white;
+  color: #333;
+}
+
+.tab-btn.active {
+  background: white;
+  color: #409eff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 .posts-section {
   padding-top: 24px;
   border-top: 1px solid #f0f0f0;
 }
 
-.posts-section h3 {
+.corners-section {
+  padding-top: 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.posts-section h3,
+.corners-section h3 {
   margin: 0 0 16px 0;
   font-size: 18px;
   color: #333;
+}
+
+.corners-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.corner-item {
+  background: #f8f9fa;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 2px solid transparent;
+}
+
+.corner-item:hover {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #409eff;
+  transform: translateY(-2px);
+}
+
+.corner-images {
+  width: 100%;
+  height: 180px;
+  background: #e0e0e0;
+  overflow: hidden;
+}
+
+.corner-images img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.corner-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.placeholder-icon {
+  font-size: 48px;
+}
+
+.corner-info {
+  padding: 16px;
+}
+
+.corner-info h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.corner-description {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.corner-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.corner-posts {
+  font-size: 12px;
+  color: #999;
+}
+
+.edit-corner-btn {
+  padding: 6px 12px;
+  background: #409eff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.edit-corner-btn:hover {
+  background: #66b1ff;
 }
 
 .loading {
@@ -312,5 +852,182 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.users-section,
+.favorites-section {
+  padding-top: 24px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.users-section h3,
+.favorites-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.user-item:hover {
+  background: #e9ecef;
+  transform: translateX(4px);
+}
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.user-details {
+  flex: 1;
+}
+
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 600px) {
+  .user-profile-view {
+    padding: 10px;
+  }
+
+  .profile-container {
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .profile-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+  }
+
+  .avatar {
+    width: 64px;
+    height: 64px;
+    font-size: 26px;
+  }
+
+  .user-name-row {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .user-name-row h1 {
+    font-size: 20px;
+  }
+
+  .logout-btn {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .user-info {
+    width: 100%;
+  }
+
+  .stats {
+    justify-content: space-around;
+    gap: 12px;
+  }
+
+  .stat-number {
+    font-size: 18px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .interests-section {
+    padding: 14px;
+  }
+
+  .interests-section h3 {
+    font-size: 14px;
+  }
+
+  .tag-chip {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 13px;
+    min-width: calc(33% - 4px);
+  }
+
+  .posts-section h3,
+  .corners-section h3,
+  .users-section h3,
+  .favorites-section h3 {
+    font-size: 16px;
+  }
+
+  .corners-list {
+    grid-template-columns: 1fr;
+  }
+
+  .corner-images {
+    height: 140px;
+  }
+
+  .corner-info {
+    padding: 12px;
+  }
+
+  .corner-info h4 {
+    font-size: 15px;
+  }
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .user-item {
+    padding: 10px 12px;
+  }
+
+  .user-name {
+    font-size: 14px;
+  }
 }
 </style>

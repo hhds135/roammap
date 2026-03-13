@@ -36,6 +36,14 @@
           <MediaUploader ref="mediaUploader" />
         </div>
 
+        <!-- Corners -->
+        <div class="form-group">
+          <CornerSelector v-model="formData.corners" />
+          <p v-if="formData.corners.length >= 2" class="route-hint">
+            🛤️ These {{ formData.corners.length }} locations will form a route
+          </p>
+        </div>
+
         <!-- Tags -->
         <div class="form-group">
           <label>Tags</label>
@@ -100,6 +108,7 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { postsApi } from '../api/posts';
 import MediaUploader from '../components/Media/MediaUploader.vue';
+import CornerSelector from '../components/Corner/CornerSelector.vue';
 
 const router = useRouter();
 const mediaUploader = ref(null);
@@ -109,6 +118,7 @@ const formData = ref({
   description: '',
   media_type: 'image',
   media_files: [],
+  corners: [],
   tags: [],
   visibility: 'public'
 });
@@ -174,9 +184,18 @@ const handleSubmit = async () => {
       description: formData.value.description.trim(),
       media_type: mediaUploader.value.selectedType || 'image',
       media_files: uploadedFileIds,
+      corner_ids: formData.value.corners.map(c => c._id),
       tags: formData.value.tags,
       visibility: formData.value.visibility
     };
+
+    // Auto-create route if 2+ corners are selected
+    // The corners order defines the route sequence
+    if (formData.value.corners.length >= 2) {
+      postData.route = {
+        corner_ids: formData.value.corners.map(c => c._id)
+      };
+    }
 
     const response = await postsApi.create(postData);
 
@@ -199,9 +218,10 @@ const handleCancel = () => {
 
 <style scoped>
 .create-post-view {
-  min-height: 100vh;
+  height: 100%;
   background: #f5f7fa;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .create-container {
@@ -234,6 +254,16 @@ const handleCancel = () => {
   font-weight: 600;
   color: #333;
   font-size: 14px;
+}
+
+.route-hint {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .form-group input[type="text"],

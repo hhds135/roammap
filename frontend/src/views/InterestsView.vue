@@ -12,9 +12,10 @@ import InterestTagManager from '../components/Interests/InterestTagManager.vue';
 
 <style scoped>
 .interests-view {
-  min-height: 100vh;
+  height: 100%;
   background: #f5f7fa;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .interests-container {
