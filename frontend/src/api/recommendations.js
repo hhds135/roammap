@@ -22,7 +22,7 @@ export const recommendationsApi = {
     });
   },
 
-  // Get recommendation config
+  // Get recommendation configuration
   getConfig: () => {
     return apiClient.get('/feed/config');
   }

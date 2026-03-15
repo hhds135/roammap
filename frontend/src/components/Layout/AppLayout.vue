@@ -13,11 +13,15 @@ import TabBar from './TabBar.vue';
 
 <style scoped>
 .app-layout {
-  min-height: 100vh;
-  padding-bottom: 70px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .main-content {
-  min-height: 100vh;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 </style>

@@ -19,10 +19,28 @@
         </button>
       </div>
 
+      <!-- Tag Filter -->
+      <div v-if="currentFeedType === 'recommendation'" class="tag-filter">
+        <div class="tag-input-wrapper">
+          <span class="tag-icon">#</span>
+          <input
+            v-model="tagFilter"
+            type="text"
+            placeholder="Enter tag to filter posts..."
+            @keyup.enter="applyTagFilter"
+          />
+          <button v-if="tagFilter" @click="clearTagFilter" class="clear-tag">×</button>
+        </div>
+        <button @click="applyTagFilter" class="filter-button">Filter</button>
+      </div>
+
       <div v-if="error" class="error-message">{{ error }}</div>
 
-      <div v-else-if="posts.length === 0 && !loading" class="empty-state">
-        <p v-if="currentFeedType === 'following'">
+      <div v-else-if="displayPosts.length === 0 && !isLoading" class="empty-state">
+        <p v-if="tagFilter">
+          No posts found with "#{{ tagFilter }}" tag
+        </p>
+        <p v-else-if="currentFeedType === 'following'">
           You're not following anyone yet. Discover interesting content!
         </p>
         <p v-else>
@@ -32,19 +50,21 @@
 
       <div v-else class="posts-list">
         <PostCard
-          v-for="post in posts"
+          v-for="post in displayPosts"
           :key="post._id"
           :post="post"
+          compact
           @view="trackView(post._id)"
+          @deleted="handlePostDeleted"
         />
       </div>
 
-      <div v-if="loading" class="loading">
+      <div v-if="isLoading && !tagFilter" class="loading">
         <div class="spinner"></div>
         <p>Loading...</p>
       </div>
 
-      <div v-if="!hasMore && posts.length > 0" class="end-message">
+      <div v-if="!tagFilter && !hasMore && displayPosts.length > 0" class="end-message">
         <p>You've reached the end</p>
       </div>
     </div>
@@ -52,58 +72,188 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useFeed } from '../composables/useFeed';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { feedApi } from '../api/feed';
+import { recommendationsApi } from '../api/recommendations';
+import { postsApi } from '../api/posts';
 import PostCard from '../components/Feed/PostCard.vue';
 
+// 直接定义响应式状态，不使用嵌套的 composable
+const posts = ref([]);
+const loading = ref(false);
+const error = ref(null);
+const hasMore = ref(true);
+const skip = ref(0);
+const limit = 20;
+
 const currentFeedType = ref('following');
+const tagFilter = ref('');
+const filteredPosts = ref([]);
+const tagFilterLoading = ref(false);
+const userLocation = ref(null);
+
 const viewTimers = ref(new Map());
 
-// Initialize feed
-const {
-  posts,
-  loading,
-  error,
-  hasMore,
-  loadMore,
-  refresh,
-  userLocation
-} = useFeed(currentFeedType.value);
+// 简单的 computed
+const isLoading = computed(() => loading.value || tagFilterLoading.value);
+
+const displayPosts = computed(() => {
+  return tagFilter.value ? filteredPosts.value : posts.value;
+});
+
+// 获取用户位置
+const getUserLocation = () => {
+  return new Promise((resolve) => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        () => {
+          resolve({ lat: 31.2304, lng: 121.4737 }); // Default: Shanghai
+        }
+      );
+    } else {
+      resolve({ lat: 31.2304, lng: 121.4737 });
+    }
+  });
+};
+
+// 直接获取数据
+const fetchPosts = async (reset = false) => {
+  if (reset) {
+    skip.value = 0;
+    posts.value = [];
+  }
+
+  loading.value = true;
+  error.value = null;
+
+  try {
+    let response;
+
+    if (currentFeedType.value === 'following') {
+      response = await feedApi.getFollowing({
+        skip: skip.value,
+        limit,
+        include_own: true
+      });
+    } else {
+      // recommendation
+      if (!userLocation.value) {
+        userLocation.value = await getUserLocation();
+      }
+      response = await recommendationsApi.getFeed({
+        lat: userLocation.value.lat,
+        lng: userLocation.value.lng,
+        skip: skip.value,
+        limit
+      });
+    }
+
+    console.log('[FeedView] API response:', response);
+
+    if (response.success && response.data?.posts) {
+      const newPosts = response.data.posts;
+      if (reset) {
+        posts.value = newPosts;
+      } else {
+        posts.value = [...posts.value, ...newPosts];
+      }
+      skip.value += newPosts.length;
+      hasMore.value = newPosts.length === limit;
+      console.log('[FeedView] posts updated:', posts.value.length, posts.value);
+    }
+  } catch (err) {
+    error.value = err.error?.message || 'Loading failed';
+    console.error('[FeedView] fetch error:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const loadMore = () => {
+  if (!loading.value && hasMore.value) {
+    fetchPosts(false);
+  }
+};
+
+const refresh = () => {
+  fetchPosts(true);
+};
 
 const switchFeed = (type) => {
   if (currentFeedType.value === type) return;
-
+  
   currentFeedType.value = type;
-
+  tagFilter.value = '';
+  filteredPosts.value = [];
+  
   // Clear view timers
   viewTimers.value.forEach(timer => clearTimeout(timer));
   viewTimers.value.clear();
-
-  // Reinitialize feed with new type
-  Object.assign(useFeed(type));
+  
   refresh();
 };
 
-// Track post view after 10 seconds
+const handlePostDeleted = (postId) => {
+  // Remove from posts
+  const index = posts.value.findIndex(p => p._id === postId);
+  if (index > -1) {
+    posts.value.splice(index, 1);
+  }
+  
+  // Remove from filtered posts
+  const filteredIndex = filteredPosts.value.findIndex(p => p._id === postId);
+  if (filteredIndex > -1) {
+    filteredPosts.value.splice(filteredIndex, 1);
+  }
+};
+
+const applyTagFilter = async () => {
+  const tag = tagFilter.value.trim();
+  if (!tag) return;
+
+  tagFilterLoading.value = true;
+  try {
+    const response = await postsApi.getAll({ tag, limit: 50 });
+    if (response.success && response.data) {
+      filteredPosts.value = response.data.posts || [];
+    }
+  } catch (err) {
+    console.error('Failed to filter by tag:', err);
+    filteredPosts.value = [];
+  } finally {
+    tagFilterLoading.value = false;
+  }
+};
+
+const clearTagFilter = () => {
+  tagFilter.value = '';
+  filteredPosts.value = [];
+};
+
 const trackView = (postId) => {
   if (viewTimers.value.has(postId)) return;
 
   const timer = setTimeout(async () => {
     try {
-      // Record view with 10 seconds duration (10000 ms)
       const { viewHistoryApi } = await import('../api/view_history');
       await viewHistoryApi.recordView(postId, 10000);
-      console.log(`View tracked for post: ${postId}`);
     } catch (err) {
       console.error('Failed to track view:', err);
     } finally {
       viewTimers.value.delete(postId);
     }
-  }, 10000); // 10 seconds
+  }, 10000);
 
   viewTimers.value.set(postId, timer);
 };
 
+// Infinite scroll
 let observer = null;
 let loadMoreTrigger = null;
 
@@ -122,11 +272,15 @@ const setupInfiniteScroll = () => {
 
   loadMoreTrigger = document.createElement('div');
   loadMoreTrigger.className = 'load-more-trigger';
-  document.querySelector('.feed-view').appendChild(loadMoreTrigger);
-  observer.observe(loadMoreTrigger);
+  const feedView = document.querySelector('.feed-view');
+  if (feedView) {
+    feedView.appendChild(loadMoreTrigger);
+    observer.observe(loadMoreTrigger);
+  }
 };
 
 onMounted(() => {
+  refresh();
   setupInfiniteScroll();
 });
 
@@ -134,10 +288,9 @@ onUnmounted(() => {
   if (observer) {
     observer.disconnect();
   }
-  if (loadMoreTrigger) {
-    loadMoreTrigger.remove();
+  if (loadMoreTrigger && loadMoreTrigger.parentNode) {
+    loadMoreTrigger.parentNode.removeChild(loadMoreTrigger);
   }
-  // Clear all view timers
   viewTimers.value.forEach(timer => clearTimeout(timer));
   viewTimers.value.clear();
 });
@@ -145,9 +298,11 @@ onUnmounted(() => {
 
 <style scoped>
 .feed-view {
-  min-height: 100vh;
+  height: 100%;
+  width: 100%;
   background: #f5f7fa;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .feed-container {
@@ -194,6 +349,75 @@ onUnmounted(() => {
 
 .toggle-icon {
   font-size: 18px;
+}
+
+.tag-filter {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 8px;
+}
+
+.tag-input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  transition: border-color 0.3s;
+}
+
+.tag-input-wrapper:focus-within {
+  border-color: #409eff;
+}
+
+.tag-icon {
+  font-size: 18px;
+  color: #667eea;
+}
+
+.tag-input-wrapper input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}
+
+.clear-tag {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-tag:hover {
+  color: #333;
+}
+
+.filter-button {
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.filter-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .error-message {

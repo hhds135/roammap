@@ -32,7 +32,7 @@ VIEW_HISTORY_TTL_DAYS = 30
 @jwt_required
 def record_post_view(post_id):
     """
-    Record user's post viewing behavior.
+    Record user viewing behavior for a post.
 
     Args:
         post_id: Post ID
@@ -91,7 +91,7 @@ def record_post_view(post_id):
 @jwt_required
 def get_user_view_history(user_id):
     """
-    Get user's viewing history.
+    Get user's viewing history records.
 
     Args:
         user_id: User ID
@@ -178,11 +178,11 @@ def get_user_view_history(user_id):
 @jwt_optional
 def get_trending_posts():
     """
-    Get trending posts with most views.
+    Get trending posts with the most views.
 
     Query parameters:
         - time_range: Time range (1h, 6h, 24h, 7d, default 24h)
-        - limit: Number of posts to return (default 10)
+        - limit: Number of results to return (default 10)
 
     Returns:
         JSON with trending posts

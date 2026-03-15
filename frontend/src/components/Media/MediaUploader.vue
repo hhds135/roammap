@@ -175,9 +175,15 @@ const uploadAll = async () => {
   }
 };
 
+const hasFiles = () => {
+  return files.value.length > 0;
+};
+
 defineExpose({
   uploadAll,
-  uploadedFileIds
+  uploadedFileIds,
+  hasFiles,
+  selectedType
 });
 </script>
 

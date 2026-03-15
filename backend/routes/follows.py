@@ -1,12 +1,14 @@
-"""Follow system endpoints."""
+"""Follow system endpoints - One-way follow system."""
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
 
 from storage.user_store import UserStore
+from storage.notification_store import NotificationStore
 from utils import jwt_required, jwt_optional
 
 bp = Blueprint('follows', __name__)
 user_store = UserStore()
+notification_store = NotificationStore()
 
 # Maximum number of users a user can follow
 MAX_FOLLOWING = 1000
@@ -16,7 +18,7 @@ MAX_FOLLOWING = 1000
 @jwt_required
 def follow_user(user_id):
     """
-    Follow a specific user.
+    Follow a specified user.
 
     Args:
         user_id: ID of the user to follow (URL path parameter)
@@ -64,6 +66,18 @@ def follow_user(user_id):
     if not success:
         return jsonify({'error': 'Failed to follow user'}), 500
 
+    # Create notification for the followed user
+    try:
+        follower_username = current_user.get('username', 'Someone')
+        notification_store.create_notification(
+            user_id=target_user_obj,
+            notification_type='follow',
+            actor_id=current_user_obj,
+            content=f'{follower_username} followed you'
+        )
+    except Exception as e:
+        print(f'Failed to create follow notification: {e}')
+
     return jsonify({
         'success': True,
         'message': 'Successfully followed user',
@@ -79,7 +93,7 @@ def follow_user(user_id):
 @jwt_required
 def unfollow_user(user_id):
     """
-    Unfollow a specific user.
+    Unfollow a specified user.
 
     Args:
         user_id: ID of the user to unfollow (URL path parameter)
@@ -128,14 +142,14 @@ def unfollow_user(user_id):
 @jwt_optional
 def get_following(user_id):
     """
-    Get list of all users followed by a specific user.
+    Get list of all users that the specified user is following.
 
     Args:
         user_id: User ID (URL path parameter)
 
     Query parameters:
-        - limit: Number of users per page (default 20)
-        - skip: Number of users to skip (for pagination)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
 
     Returns:
         JSON with following list
@@ -195,14 +209,14 @@ def get_following(user_id):
 @jwt_optional
 def get_followers(user_id):
     """
-    Get list of all users following a specific user (followers).
+    Get list of all users following the specified user (followers).
 
     Args:
         user_id: User ID (URL path parameter)
 
     Query parameters:
-        - limit: Number of users per page (default 20)
-        - skip: Number of users to skip (for pagination)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
 
     Returns:
         JSON with followers list
@@ -262,7 +276,7 @@ def get_followers(user_id):
 @jwt_optional
 def get_follow_status(user_id):
     """
-    Check if current user is following a specific user.
+    Check if current user is following the specified user.
 
     Args:
         user_id: ID of the user to check (URL path parameter)

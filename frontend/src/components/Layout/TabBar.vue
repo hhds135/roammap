@@ -33,16 +33,13 @@ const isActive = (path) => {
 
 <style scoped>
 .tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   background: white;
   display: flex;
   justify-content: space-around;
   padding: 10px 0;
   box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
   z-index: 100;
+  flex-shrink: 0;
 }
 
 .tab-item {

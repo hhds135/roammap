@@ -25,3 +25,7 @@ export const formatters = {
     return 'just now';
   }
 };
+
+// Export individual functions for direct import
+export const formatRelativeTime = formatters.formatRelativeTime;
+export const formatDate = formatters.formatDate;

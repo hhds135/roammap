@@ -5,6 +5,7 @@ from bson import ObjectId
 from storage.comment_store import CommentStore
 from storage.post_store import PostStore
 from storage.user_store import UserStore
+from storage.notification_store import NotificationStore
 from utils import jwt_required, check_post_visibility, is_following_user
 
 bp = Blueprint('comments', __name__)
@@ -12,6 +13,7 @@ bp = Blueprint('comments', __name__)
 comment_store = CommentStore()
 post_store = PostStore()
 user_store = UserStore()
+notification_store = NotificationStore()
 
 
 @bp.route('/api/posts/<post_id>/comments', methods=['POST'])
@@ -65,6 +67,19 @@ def add_comment(post_id):
         post_store.increment_stat(post_id_obj, 'comments_count')
     except Exception:
         pass
+
+    # Create notification for post author (if not commenting on own post)
+    if str(post['user_id']) != user_id:
+        try:
+            notification_store.create_notification(
+                user_id=post['user_id'],
+                notification_type='comment',
+                actor_id=ObjectId(user_id),
+                content=f'{username} commented on your post',
+                post_id=post_id_obj
+            )
+        except Exception as e:
+            print(f'Failed to create comment notification: {e}')
 
     # Get created comment
     comment = comment_store.get_comment_by_id(comment_id)

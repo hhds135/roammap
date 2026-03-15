@@ -4,12 +4,16 @@ from bson import ObjectId
 
 from storage.like_store import LikeStore
 from storage.post_store import PostStore
+from storage.user_store import UserStore
+from storage.notification_store import NotificationStore
 from utils import jwt_required, check_post_visibility, is_following_user
 
 bp = Blueprint('likes', __name__)
 
 like_store = LikeStore()
 post_store = PostStore()
+user_store = UserStore()
+notification_store = NotificationStore()
 
 
 @bp.route('/api/posts/<post_id>/like', methods=['POST'])
@@ -38,6 +42,22 @@ def toggle_like_post(post_id):
     # Update post stats
     if is_liked:
         post_store.increment_stat(post_id_obj, 'likes_count')
+        
+        # Create notification for post author
+        try:
+            # Get liker's username
+            liker = user_store.get_user_by_id(ObjectId(user_id))
+            liker_username = liker.get('username', 'Someone') if liker else 'Someone'
+            
+            notification_store.create_notification(
+                user_id=post['user_id'],
+                notification_type='like',
+                actor_id=ObjectId(user_id),
+                content=f'{liker_username} liked your post',
+                post_id=post_id_obj
+            )
+        except Exception as e:
+            print(f'Failed to create like notification: {e}')
     else:
         post_store.decrement_stat(post_id_obj, 'likes_count')
 

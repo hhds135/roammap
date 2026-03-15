@@ -64,7 +64,8 @@ const handleSubmit = async () => {
 
   const result = await register(username.value, password.value);
   if (result.success) {
-    router.push('/feed');
+    alert('Registration successful! Please login.');
+    router.push('/login');
   }
 };
 </script>

@@ -34,6 +34,21 @@ const routes = [
         component: () => import('../views/InterestsView.vue')
       },
       {
+        path: 'favorites',
+        name: 'Favorites',
+        component: () => import('../views/FavoritesView.vue')
+      },
+      {
+        path: 'search-users',
+        name: 'SearchUsers',
+        component: () => import('../views/SearchUsersView.vue')
+      },
+      {
+        path: 'notifications',
+        name: 'Notifications',
+        component: () => import('../views/NotificationsView.vue')
+      },
+      {
         path: 'profile',
         name: 'Profile',
         component: () => import('../views/UserProfileView.vue')
@@ -52,6 +67,21 @@ const routes = [
         path: 'create',
         name: 'CreatePost',
         component: () => import('../views/CreatePostView.vue')
+      },
+      {
+        path: 'create-corner',
+        name: 'CreateCorner',
+        component: () => import('../views/CreateCornerView.vue')
+      },
+      {
+        path: 'edit-corner/:cornerId',
+        name: 'EditCorner',
+        component: () => import('../views/EditCornerView.vue')
+      },
+      {
+        path: 'post/:postId',
+        name: 'PostDetail',
+        component: () => import('../views/PostDetailView.vue')
       }
     ]
   }

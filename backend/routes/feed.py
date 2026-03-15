@@ -49,6 +49,22 @@ def expand_post_feed_data(post):
     expanded['corner_ids'] = [str(cid) for cid in post.get('corner_ids', [])]
     expanded['media_files'] = [str(fid) for fid in post.get('media_files', [])]
 
+    # Expand corner_ids to include corner details
+    corners = []
+    for corner_id in post.get('corner_ids', []):
+        try:
+            corner_obj = ObjectId(corner_id) if isinstance(corner_id, str) else corner_id
+            corner = corner_store.get_corner_by_id(corner_obj)
+            if corner:
+                corners.append({
+                    '_id': str(corner['_id']),
+                    'name': corner.get('name', ''),
+                    'location': corner.get('location', {})
+                })
+        except Exception:
+            pass
+    expanded['corners'] = corners
+
     # Convert route corner_ids to strings
     if 'route' in expanded and expanded['route'] and 'corner_ids' in expanded['route']:
         expanded['route']['corner_ids'] = [str(cid) for cid in expanded['route']['corner_ids']]
@@ -60,11 +76,11 @@ def expand_post_feed_data(post):
 @jwt_required
 def get_following_feed():
     """
-    Get latest posts from all users followed by current user.
+    Get latest posts from all users that the current user is following.
 
     Query parameters:
-        - limit: Number of posts per page (default 20)
-        - skip: Number of posts to skip (for pagination)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
         - include_own: Whether to include own posts (default true)
 
     Returns:
@@ -163,7 +179,7 @@ def get_following_feed():
 @jwt_required
 def get_feed_status():
     """
-    Get follow status summary for current user.
+    Get current user's follow status summary.
 
     Returns:
         JSON with status summary
@@ -201,11 +217,11 @@ def get_feed_status():
 @jwt_optional
 def get_public_feed():
     """
-    Get public posts feed (no login required).
+    Get public post feed (no login required).
 
     Query parameters:
-        - limit: Number of posts per page (default 20)
-        - skip: Number of posts to skip (for pagination)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
 
     Returns:
         JSON with public posts
@@ -449,8 +465,9 @@ def get_comprehensive_feed():
                 corner = corners.get(str(cid))
                 if corner:
                     post_corners.append({
-                        'corner_id': str(cid),
-                        'name': corner.get('name', '')
+                        '_id': str(cid),
+                        'name': corner.get('name', ''),
+                        'location': corner.get('location', {})
                     })
             post_data['corners'] = post_corners
 

@@ -135,3 +135,58 @@ def update_user_interests(user_id):
             'interest_tags': updated_user.get('interest_tags', [])
         }
     })
+
+
+@bp.route('/api/users/search', methods=['GET'])
+@jwt_required
+def search_users():
+    """
+    Search users by username.
+    
+    Query parameters:
+        - q: Search query string (required)
+        - limit: Maximum number of results (default: 20)
+    
+    Returns:
+        JSON with matching users
+    """
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'error': 'Missing search query'}), 400
+    
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 20
+    
+    # Use regex for fuzzy search on username
+    import re
+    regex = re.compile(query, re.IGNORECASE)
+    
+    try:
+        users = list(user_store.collection.find({
+            'username': regex
+        }).limit(limit))
+    except Exception as e:
+        return jsonify({'error': f'Failed to search users: {str(e)}'}), 500
+    
+    # Convert to response format
+    result = []
+    for user in users:
+        user_data = {
+            '_id': str(user['_id']),
+            'username': user.get('username', ''),
+            'interest_tags': user.get('interest_tags', []),
+            'followers_count': len(user.get('followers', [])),
+            'following_count': len(user.get('following', []))
+        }
+        result.append(user_data)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'users': result,
+            'total': len(result)
+        }
+    })

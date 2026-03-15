@@ -52,11 +52,9 @@ export function useAuth() {
 
     try {
       const response = await authApi.register(username, password);
-      if (response.user && response.token) {
-        storage.setUser(response.user);
-        storage.setToken(response.token);
-        user.value = response.user;
-        token.value = response.token;
+      // Registration is successful if user is returned (token not required)
+      // User needs to login after registration
+      if (response.user) {
         return { success: true };
       }
       return { success: false, message: 'Registration failed' };

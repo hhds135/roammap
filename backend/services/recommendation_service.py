@@ -1,5 +1,5 @@
 """
-Recommendation service - Personalized content recommendation algorithm.
+Recommendation service.
 
 Implements personalized content recommendation based on:
 - Geographic proximity (40%)
@@ -35,7 +35,7 @@ class RecommendationService:
     """
     Recommendation algorithm service class.
 
-    Calculates recommendation scores by comprehensively considering geographic location, 
+    Calculates recommendation scores by considering geographic location,
     interest tags, social relationships, and behavior history.
     """
 
@@ -44,7 +44,7 @@ class RecommendationService:
         Initialize recommendation service.
 
         Args:
-            weights: Recommendation weight configuration, defaults to:
+            weights: Recommendation weight configuration, default:
                 - geo: 0.4 (geographic location)
                 - interest: 0.3 (interest tags)
                 - social: 0.2 (social relationships)
@@ -130,10 +130,10 @@ class RecommendationService:
                        user_location: Optional[Tuple[float, float]] = None,
                        limit: int = 20) -> List[Dict[str, Any]]:
         """
-        Generate personalized recommendation feed for users.
+        Generate recommendation feed for user.
 
         Args:
-            user_id: User ID (optional, anonymous users use anonymous recommendations)
+            user_id: User ID (optional, anonymous recommendation for non-logged-in users)
             user_location: User location (lat, lng), optional
             limit: Number of posts to return
 
@@ -216,13 +216,13 @@ class RecommendationService:
 
     def _get_candidate_posts(self, limit: int = 1000) -> List[Dict[str, Any]]:
         """
-        Get list of candidate posts.
+        Get candidate post list.
 
         Args:
             limit: Maximum number of candidates
 
         Returns:
-            List of candidate posts (public posts only)
+            Candidate post list (public posts only)
         """
         return self.post_store.get_posts_by_visibility('public', limit=limit)
 
@@ -240,7 +240,7 @@ class RecommendationService:
             user_id: User ID
 
         Returns:
-            (total score, score breakdown dictionary)
+            (Total score, score breakdown dictionary)
         """
         # Calculate scores for each dimension
         geo_score = self._calculate_geo_score(post, user_location)
@@ -271,7 +271,7 @@ class RecommendationService:
         """
         Calculate geographic location score (40%).
 
-        Closer distance results in higher score:
+        Closer distance yields higher score:
         - Distance < 1km: 100 points
         - Distance 1-5km: 80 points
         - Distance 5-10km: 60 points
@@ -288,12 +288,12 @@ class RecommendationService:
         if not user_location:
             return 50  # No location info, give medium score
 
-        # Get corners associated with the post
+        # Get locations associated with the post
         corner_ids = post.get('corner_ids', [])
         if not corner_ids:
-            return 30  # No associated corners, give lower score
+            return 30  # No associated locations, give lower score
 
-        # Calculate distance to nearest corner
+        # Calculate distance to nearest location
         min_distance = float('inf')
         for corner_id in corner_ids:
             corner = self.corner_store.get_corner_by_id(corner_id)
@@ -306,7 +306,7 @@ class RecommendationService:
                     min_distance = distance
 
         if min_distance == float('inf'):
-            return 30  # No valid corners found
+            return 30  # No valid locations found
 
         # Calculate score based on distance
         if min_distance < 1000:  # < 1km
@@ -326,8 +326,8 @@ class RecommendationService:
         Calculate interest tag score (30%).
 
         Calculate based on overlap between post tags and user interest tags:
-        - Complete match: 100 points
-        - Partial match: calculated proportionally
+        - Full match: 100 points
+        - Partial match: Proportional calculation
         - No match: 20 points
 
         Args:
@@ -380,21 +380,21 @@ class RecommendationService:
             Social relationship score (0-100)
         """
         if not user_id:
-            return 40  # Not logged in, no social relationships
+            return 40  # Non-logged-in user, no social relationships
 
         post_user_id = str(post.get('user_id'))
 
         if post_user_id == user_id:
             return 100  # Own post
 
-        # Check if following post creator
+        # Check if user is following the post creator
         try:
             if is_following_user(user_id, post_user_id):
                 # Check if mutually following
                 if is_following_user(post_user_id, user_id):
                     return 90  # Mutually following
                 else:
-                    return 80  # One-way follow
+                    return 80  # One-way following
             else:
                 return 40  # No social relationship
         except Exception:
@@ -406,10 +406,10 @@ class RecommendationService:
         Calculate behavior history score (10%).
 
         Based on user's historical behavior:
-        - Whether liked the post: +30 points
-        - Whether favorited the post: +30 points
-        - Whether viewed the post: +20 points
-        - View duration: extra points
+        - Liked the post: +30 points
+        - Favorited the post: +30 points
+        - Viewed the post: +20 points
+        - View duration: Additional points
 
         Args:
             post: Post data
@@ -419,7 +419,7 @@ class RecommendationService:
             Behavior history score (0-100)
         """
         if not user_id:
-            return 10  # Not logged in, no behavior history
+            return 10  # Non-logged-in user, no behavior history
 
         try:
             user_obj = ObjectId(user_id)
@@ -450,7 +450,7 @@ class RecommendationService:
             )
             if total_duration > 0:
                 score += 20
-                # View duration bonus points
+                # Additional points for view duration
                 if total_duration > 10000:  # > 10 seconds
                     score += 10
         except Exception:
@@ -468,7 +468,7 @@ class RecommendationService:
             location2: GeoJSON Point {"coordinates": [lng, lat]}
 
         Returns:
-            距离 (米)
+            Distance (meters)
         """
         from math import radians, sin, cos, sqrt, atan2
 
@@ -493,19 +493,19 @@ class RecommendationService:
                            radius: int = 10000,
                            limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Recommend potentially interesting corners based on user location.
+        Recommend potentially interesting locations based on user position.
 
         Args:
             user_id: User ID (optional)
             user_location: User location (lat, lng)
             radius: Search radius (meters)
-            limit: Number of corners to return
+            limit: Number of locations to return
 
         Returns:
-            List of recommended corners
+            Recommended location list
         """
         if not user_location:
-            # No location info, return popular corners
+            # No location info, return popular locations
             corners = self.corner_store.get_all_corners(limit=limit)
             # Convert ObjectId to string for JSON serialization
             result = []
@@ -528,7 +528,7 @@ class RecommendationService:
             limit=limit * 2  # Get more for sorting
         )
 
-        # Count posts for each corner
+        # Count posts for each location
         result = []
         for corner in corners:
             post_count = self.post_store.count_posts_by_corner(corner['_id'])
@@ -550,7 +550,7 @@ class RecommendationService:
             }
             result.append(corner_data)
 
-        # Sort comprehensively by post count and distance
+        # Sort by post count and distance combined
         result.sort(key=lambda x: (x['post_count'], -x['distance']), reverse=True)
 
         return result[:limit]

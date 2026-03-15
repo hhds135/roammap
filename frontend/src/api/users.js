@@ -9,5 +9,14 @@ export const usersApi = {
     return apiClient.put(`/users/${userId}/interests`, {
       interest_tags: tags
     });
+  },
+
+  search(query, params) {
+    return apiClient.get('/users/search', {
+      params: {
+        q: query,
+        ...params
+      }
+    });
   }
 };

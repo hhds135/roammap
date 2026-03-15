@@ -221,11 +221,6 @@ def create_post():
     # Validate route if provided
     route = data.get('route')
     if route:
-        # Validate route_name
-        route_name = route.get('route_name')
-        if not route_name or not isinstance(route_name, str) or not route_name.strip():
-            return jsonify({'error': 'route.route_name is required and must be a non-empty string'}), 400
-
         route_corner_ids = route.get('corner_ids', [])
         if not isinstance(route_corner_ids, list):
             return jsonify({'error': 'route.corner_ids must be an array'}), 400
@@ -241,8 +236,23 @@ def create_post():
                     'error': f'Route corner {route_corner_id} must be in corner_ids'
                 }), 400
 
+        # route_name is optional - auto-generate if not provided
+        route_name = route.get('route_name', '').strip()
+        if not route_name:
+            # Auto-generate route name from corners count
+            route_name = f"Route ({len(route_corner_ids)} stops)"
+
         # Add created_at to route
         route['created_at'] = datetime.utcnow().isoformat()
+        route['route_name'] = route_name
+    
+    # Auto-create route if 2+ corners but no route provided
+    if not route and len(corner_ids) >= 2:
+        route = {
+            'route_name': f"Route ({len(corner_ids)} stops)",
+            'corner_ids': corner_ids.copy(),
+            'created_at': datetime.utcnow().isoformat()
+        }
 
     # Convert IDs to appropriate types
     # Note: user_id from JWT is already a string (ObjectId hex string)
@@ -609,7 +619,7 @@ def get_posts_by_user(user_id):
 @jwt_optional
 def get_post_route(post_id):
     """
-    获取帖子的路线详细信息和完整的地点数据.
+    Get route details and complete corner data for a post.
 
     Args:
         post_id: Post ObjectId

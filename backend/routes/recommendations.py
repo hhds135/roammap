@@ -1,4 +1,4 @@
-"""Recommendation endpoints."""
+"""Recommendation endpoints - Recommendation algorithm API."""
 from flask import Blueprint, request, jsonify
 
 from services.recommendation_service import get_recommendation_service
@@ -110,7 +110,7 @@ def get_recommendation_corners():
     """
     Get recommended corners.
 
-    Recommend corners that may be of interest based on user location and interests.
+    Recommend potentially interesting corners based on user location and interests.
 
     Query parameters:
         - lat: User's current latitude (optional)
@@ -185,7 +185,7 @@ def get_recommendation_corners():
 @bp.route('/api/recommendations/config', methods=['GET'])
 def get_recommendation_config():
     """
-    Get recommendation algorithm weight configuration (for debugging).
+    Get weight configuration of recommendation algorithm (for debugging).
 
     Returns:
         JSON with recommendation weights
@@ -214,7 +214,7 @@ def get_recommendation_config():
 @jwt_required
 def get_recommendation_stats():
     """
-    Get recommendation algorithm statistics.
+    Get statistics of recommendation algorithm.
 
     Returns:
         JSON with recommendation statistics

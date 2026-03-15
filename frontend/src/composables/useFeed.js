@@ -14,14 +14,14 @@ async function getUserLocation() {
           });
         },
         () => {
-          // Default location: Birmingham
-          resolve({ lat: 52.4862, lng: -1.8904 });
+          // Default location: Shanghai
+          resolve({ lat: 31.2304, lng: 121.4737 });
         }
       );
-   } else {
-  // Default location: Birmingham
-  resolve({ lat: 52.4862, lng: -1.8904 });
-   }
+    } else {
+      // Default location: Shanghai
+      resolve({ lat: 31.2304, lng: 121.4737 });
+    }
   });
 }
 
@@ -89,7 +89,7 @@ export function useFeed(feedType = 'following') {
         hasMore.value = response.data.posts.length === limit;
       }
     } catch (err) {
-      error.value = err.error?.message || 'Load failed';
+      error.value = err.error?.message || 'Loading failed';
     } finally {
       loading.value = false;
     }
@@ -105,9 +105,12 @@ export function useFeed(feedType = 'following') {
     fetchPosts(true);
   };
 
-  onMounted(() => {
-    fetchPosts(true);
-  });
+  const removePost = (postId) => {
+    const index = posts.value.findIndex(p => p._id === postId);
+    if (index > -1) {
+      posts.value.splice(index, 1);
+    }
+  };
 
   return {
     posts,
@@ -116,6 +119,7 @@ export function useFeed(feedType = 'following') {
     hasMore,
     loadMore,
     refresh,
+    removePost,
     userLocation
   };
 }

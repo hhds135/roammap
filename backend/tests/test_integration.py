@@ -45,11 +45,11 @@ class TestCompleteUserFlow:
 
         # 4. Create corners
         corner1_data = {
-            'name': 'Old Alley Cafe',
+            'name': 'Old Lane Cafe',
             'description': 'A quiet cafe',
             'latitude': 31.2304,
             'longitude': 121.4737,
-            'address': 'No. 1 Old Alley, Huangpu District, Shanghai'
+            'address': '1 Old Lane, Huangpu District, Shanghai'
         }
         response = client.post('/api/corners', json=corner1_data, headers=headers)
         assert response.status_code == 201
@@ -57,11 +57,11 @@ class TestCompleteUserFlow:
         corner1_id = corner1['_id']
 
         corner2_data = {
-            'name': 'Small Lane Restaurant',
+            'name': 'Alley Restaurant',
             'description': 'Authentic Shanghai cuisine',
             'latitude': 31.2404,
             'longitude': 121.4837,
-            'address': 'No. 2 Small Lane, Huangpu District, Shanghai'
+            'address': '2 Alley, Huangpu District, Shanghai'
         }
         response = client.post('/api/corners', json=corner2_data, headers=headers)
         assert response.status_code == 201
@@ -130,8 +130,8 @@ class TestCompleteUserFlow:
         route_data = response.get_json()['data']['route']
         assert route_data['route_name'] == 'Weekend Cafe Tour'
         assert len(route_data['corners']) == 2
-        assert route_data['corners'][0]['name'] == 'Old Alley Cafe'
-        assert route_data['corners'][1]['name'] == 'Small Lane Restaurant'
+        assert route_data['corners'][0]['name'] == 'Old Lane Cafe'
+        assert route_data['corners'][1]['name'] == 'Alley Restaurant'
 
         # 9. Query nearby corners
         response = client.get(
@@ -158,7 +158,7 @@ class TestCompleteUserFlow:
         assert response.status_code == 200
         search_results = response.get_json()['data']['corners']
         corner_names = [c['name'] for c in search_results]
-        assert 'Old Alley Cafe' in corner_names
+        assert 'Old Lane Cafe' in corner_names
 
         # 12. Get comprehensive feed
         response = client.get(
@@ -223,8 +223,8 @@ class TestFollowAndFeedFlow:
 
         # 3. user1 creates a post
         corner_data = {
-            'name': 'Test Location',
-            'description': 'Location for testing',
+            'name': 'Test Corner',
+            'description': 'Corner for testing',
             'latitude': 31.2304,
             'longitude': 121.4737
         }
@@ -339,7 +339,7 @@ class TestRecommendationFlow:
         # 3. Create corners at specific locations
         corner1_data = {
             'name': 'Nearby Cafe',
-            'description': 'A cafe nearby',
+            'description': 'A nearby cafe',
             'latitude': 31.2305,
             'longitude': 121.4738,
             'tags': ['coffee', 'food']
@@ -520,7 +520,7 @@ class TestPostVisibilityFlow:
 
         # Followers-only post
         followers_post_data = {
-            'title': 'Followers Post',
+            'title': 'Followers Only Post',
             'media_type': 'image',
             'media_files': [image_id],
             'visibility': 'followers'
@@ -578,7 +578,7 @@ class TestFeedTypesFlow:
 
         # 2. Create corner and post
         corner_data = {
-            'name': 'Test Location',
+            'name': 'Test Corner',
             'description': 'For testing',
             'latitude': 31.2304,
             'longitude': 121.4737
