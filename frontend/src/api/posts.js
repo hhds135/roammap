@@ -19,5 +19,10 @@ export const postsApi = {
 
   list(params) {
     return apiClient.get('/posts', { params });
+  },
+
+  // Alias for list - get all posts with optional filters
+  getAll(params) {
+    return apiClient.get('/posts', { params });
   }
 };

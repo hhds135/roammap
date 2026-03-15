@@ -78,7 +78,7 @@ import { recommendationsApi } from '../api/recommendations';
 import { postsApi } from '../api/posts';
 import PostCard from '../components/Feed/PostCard.vue';
 
-// 直接定义响应式状态，不使用嵌套的 composable
+// Define reactive state directly, without nested composables
 const posts = ref([]);
 const loading = ref(false);
 const error = ref(null);
@@ -94,14 +94,14 @@ const userLocation = ref(null);
 
 const viewTimers = ref(new Map());
 
-// 简单的 computed
+// Simple computed
 const isLoading = computed(() => loading.value || tagFilterLoading.value);
 
 const displayPosts = computed(() => {
   return tagFilter.value ? filteredPosts.value : posts.value;
 });
 
-// 获取用户位置
+// Get user location
 const getUserLocation = () => {
   return new Promise((resolve) => {
     if ('geolocation' in navigator) {
@@ -122,7 +122,7 @@ const getUserLocation = () => {
   });
 };
 
-// 直接获取数据
+// Fetch data directly
 const fetchPosts = async (reset = false) => {
   if (reset) {
     skip.value = 0;

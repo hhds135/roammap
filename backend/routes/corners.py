@@ -686,7 +686,7 @@ def get_corners_aggregate():
 @jwt_optional
 def search_corners():
     """
-    Search corners by name or description.
+    Search corners by name, description, or tags.
 
     Query parameters:
         - q: Search keyword (required)
@@ -705,7 +705,7 @@ def search_corners():
     except ValueError:
         limit = 20
 
-    # Use regex for fuzzy search on name and description
+    # Use regex for fuzzy search on name, description, and tags
     import re
     regex = re.compile(query, re.IGNORECASE)
 
@@ -713,7 +713,8 @@ def search_corners():
         corners = list(corner_store.collection.find({
             "$or": [
                 {"name": regex},
-                {"description": regex}
+                {"description": regex},
+                {"tags": regex}
             ]
         }).limit(limit))
     except Exception as e:

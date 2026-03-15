@@ -293,14 +293,14 @@ const nextMedia = () => {
 };
 
 const handleDelete = async () => {
-  if (!confirm('确定要删除这个帖子吗？')) return;
+  if (!confirm('Are you sure you want to delete this post?')) return;
 
   deleting.value = true;
   try {
     await postsApi.delete(post.value._id);
     router.back();
   } catch (err) {
-    alert('删除失败');
+    alert('Failed to delete post');
   } finally {
     deleting.value = false;
   }

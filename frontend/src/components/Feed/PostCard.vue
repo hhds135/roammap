@@ -264,7 +264,7 @@ const handleShare = async () => {
   
   try {
     await navigator.clipboard.writeText(shareUrl);
-    alert('链接已复制到剪贴板！');
+    alert('Link copied to clipboard!');
   } catch (err) {
     // Fallback for older browsers
     const textArea = document.createElement('textarea');
@@ -275,10 +275,10 @@ const handleShare = async () => {
     textArea.select();
     try {
       document.execCommand('copy');
-      alert('链接已复制到剪贴板！');
+      alert('Link copied to clipboard!');
     } catch (e) {
       console.error('Failed to copy link:', e);
-      alert('复制链接失败，请手动复制');
+      alert('Failed to copy link, please copy manually');
     }
     document.body.removeChild(textArea);
   }

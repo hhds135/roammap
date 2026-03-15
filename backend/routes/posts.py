@@ -518,9 +518,9 @@ def get_posts():
             return jsonify({'error': 'Invalid visibility value'}), 400
         query['visibility'] = filter_visibility
     
-    # Filter by tag
+    # Filter by tag (search within tags array)
     if filter_tag:
-        query['tags'] = filter_tag
+        query['tags'] = filter_tag  # MongoDB will match if the tag exists in the array
     
     # Get current user for visibility filtering
     current_user_id = getattr(request, 'user_id', None)
