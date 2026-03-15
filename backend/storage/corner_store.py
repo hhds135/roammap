@@ -23,7 +23,8 @@ class CornerStore(BaseStore):
     
     def create_corner(self, name: str, description: str,
                       latitude: float, longitude: float,
-                      address: str) -> ObjectId:
+                      address: str, images: Optional[List[str]] = None,
+                      creator_id: Optional[ObjectId] = None) -> ObjectId:
         """
         Create a new corner (location).
         
@@ -33,6 +34,8 @@ class CornerStore(BaseStore):
             latitude: Latitude (-90 to 90)
             longitude: Longitude (-180 to 180)
             address: Human-readable address
+            images: List of image file IDs
+            creator_id: User ID who created this corner
             
         Returns:
             ObjectId of the created corner
@@ -47,7 +50,9 @@ class CornerStore(BaseStore):
                 'type': 'Point',
                 'coordinates': [longitude, latitude]  # GeoJSON format: [lng, lat]
             },
-            'address': address
+            'address': address,
+            'images': images or [],
+            'creator_id': creator_id
         }
         
         return self.create(document)
@@ -191,3 +196,4 @@ class CornerStore(BaseStore):
         """Create indexes for the corners collection."""
         self.collection.create_index('name', unique=True)
         self.collection.create_index([('location', '2dsphere')])
+        self.collection.create_index('creator_id')

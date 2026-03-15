@@ -13,7 +13,14 @@
         <button v-if="searchQuery" @click="clearSearch" class="clear-button">×</button>
       </div>
       <button @click="handleSearch" class="search-button">Search</button>
+      <button @click="resetMap" class="reset-button">Reset</button>
     </div>
+
+    <!-- Create Corner Button -->
+    <button @click="goToCreateCorner" class="create-corner-button">
+      <span class="button-icon">➕</span>
+      <span class="button-label">Add Corner</span>
+    </button>
 
     <!-- Map Container -->
     <div ref="mapContainer" class="map-container"></div>
@@ -27,6 +34,22 @@
 
       <div class="panel-content">
         <div v-if="selectedCorner" class="corner-info">
+          <!-- Images -->
+          <div v-if="selectedCorner.images && selectedCorner.images.length > 0" class="corner-images">
+            <div class="images-grid">
+              <img
+                v-for="(imageId, idx) in selectedCorner.images.slice(0, 4)"
+                :key="idx"
+                :src="getMediaUrl(imageId)"
+                :alt="`${selectedCorner.name} image ${idx + 1}`"
+                @click="openImageViewer(idx)"
+              />
+            </div>
+            <div v-if="selectedCorner.images.length > 4" class="more-images">
+              +{{ selectedCorner.images.length - 4 }} more
+            </div>
+          </div>
+
           <p v-if="selectedCorner.description" class="description">
             {{ selectedCorner.description }}
           </p>
@@ -85,12 +108,55 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch, markRaw } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import polyline from '@mapbox/polyline';
 import { cornersApi } from '../api/corners';
 import { postsApi } from '../api/posts';
+import { mediaApi } from '../api/media';
 import PostCard from '../components/Feed/PostCard.vue';
+
+// Handle route changes - reset map state when navigating away from map with query params
+const handleRouteChange = (newRoute) => {
+  // Only reset if we're leaving /map with query params (corner_id, show_route, etc.)
+  if (newRoute.path === '/map' && Object.keys(newRoute.query).length > 0) {
+    return; // Don't reset, we're navigating to map with params
+  }
+  
+  // Reset state when navigating away from /map
+  if (newRoute.path !== '/map') {
+    // Clear all state
+    searchQuery.value = '';
+    selectedCorner.value = null;
+    cornerPosts.value = [];
+    displayedRoute.value = null;
+    currentRouteCorners.value = null;
+    routeMode.value = 'driving';
+    
+    if (routeLayer && map.value) {
+      map.value.removeLayer(routeLayer);
+      routeLayer = null;
+    }
+    
+    routeMarkers.forEach(marker => {
+      try {
+        if (map.value) map.value.removeLayer(marker);
+      } catch (e) {}
+    });
+    routeMarkers = [];
+    
+    if (tempLocationMarker && map.value) {
+      map.value.removeLayer(tempLocationMarker);
+      tempLocationMarker = null;
+    }
+    selectedMapLocation.value = null;
+  }
+};
+
+const router = useRouter();
+const route = useRoute();
 
 // Fix for Leaflet default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -102,21 +168,66 @@ L.Icon.Default.mergeOptions({
 
 const mapContainer = ref(null);
 const map = ref(null);
-const userLocation = ref({ lat: 52.4862, lng: -1.8904 }); // Default: Birmingham
+const userLocation = ref({ lat: 31.2304, lng: 121.4737 }); // Default: Shanghai
+const selectedMapLocation = ref(null); // Store user-selected location on map
 const nearbyCorners = ref([]);
 const selectedCorner = ref(null);
 const cornerPosts = ref([]);
 const loadingPosts = ref(false);
 const searchQuery = ref('');
 const displayedRoute = ref(null);
+const currentRouteCorners = ref(null); // Store corners for route display
 
-let markers = [];
+let markers = []; // Corner markers (clickable to view posts)
+let routeMarkers = []; // Route stop markers (numbered 1, 2, 3...)
 let routeLayer = null;
 let userMarker = null;
+let tempLocationMarker = null;
+
+// OSRM routing service
+const OSRM_BASE_URL = 'https://router.project-osrm.org/route/v1';
+
+// Fetch real route from OSRM API
+const fetchRouteFromOSRM = async (coordinates, profile = 'driving') => {
+  // coordinates: array of [lng, lat]
+  if (coordinates.length < 2) return null;
+
+  // Format coordinates for OSRM: lng,lat;lng,lat;...
+  const coordsStr = coordinates.map(c => `${c[0]},${c[1]}`).join(';');
+  const url = `${OSRM_BASE_URL}/${profile}/${coordsStr}?overview=full&geometries=polyline`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`OSRM API error: ${response.status}`);
+    }
+    const data = await response.json();
+    
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      // Decode polyline to get coordinates
+      // polyline.decode returns [[lat, lng], ...], need to swap to [lng, lat]
+      const decodedCoords = polyline.decode(route.geometry, 5);
+      const latLngs = decodedCoords.map(c => [c[0], c[1]]); // [lat, lng]
+      
+      return {
+        coordinates: latLngs,
+        distance: route.distance, // in meters
+        duration: route.duration, // in seconds
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to fetch route from OSRM:', err);
+    return null;
+  }
+};
 
 // Initialize map
 const initMap = () => {
-  map.value = L.map(mapContainer.value).setView([userLocation.value.lat, userLocation.value.lng], 14);
+  // Use markRaw to prevent Vue from proxying the map object
+  const leafletMap = L.map(mapContainer.value).setView([userLocation.value.lat, userLocation.value.lng], 14);
+  map.value = markRaw(leafletMap);
 
   // Add OpenStreetMap tiles
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -127,8 +238,43 @@ const initMap = () => {
   // Add user location marker
   updateUserMarker();
 
+  // Add map click handler for selecting location
+  map.value.on('click', handleMapClick);
+
+  // Add moveend event to reload corners when map is moved/zoomed
+  map.value.on('moveend', handleMapMoveEnd);
+
   // Load nearby corners
   loadNearbyCorners();
+};
+
+// Handle map move/zoom end - reload corners based on current viewport
+const handleMapMoveEnd = () => {
+  // Don't reload if a route is being displayed
+  if (displayedRoute.value) return;
+  
+  // Get current map center
+  const center = map.value.getCenter();
+  loadCornersAtLocation(center.lat, center.lng);
+};
+
+// Load corners at a specific location
+const loadCornersAtLocation = async (lat, lng) => {
+  try {
+    const response = await cornersApi.getNearby({
+      lat: lat,
+      lng: lng,
+      radius: 10000, // 10km
+      limit: 50
+    });
+
+    if (response.success && response.data?.corners) {
+      nearbyCorners.value = response.data.corners;
+      displayCorners(response.data.corners);
+    }
+  } catch (err) {
+    console.error('Failed to load corners:', err);
+  }
 };
 
 // Update user marker
@@ -140,13 +286,16 @@ const updateUserMarker = () => {
   const userIcon = L.divIcon({
     className: 'user-marker',
     html: '<div class="user-marker-inner"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12]
   });
 
-  userMarker = L.marker([userLocation.value.lat, userLocation.value.lng], {
-    icon: userIcon
-  }).addTo(map.value);
+  // Use markRaw to prevent Vue from proxying the marker
+  userMarker = markRaw(L.marker([userLocation.value.lat, userLocation.value.lng], {
+    icon: userIcon,
+    zIndex: 1000
+  }).addTo(map.value));
 };
 
 // Get user location
@@ -169,23 +318,40 @@ const getUserLocation = () => {
   }
 };
 
-// Load nearby corners
-const loadNearbyCorners = async () => {
-  try {
-    const response = await cornersApi.getNearby({
-      lat: userLocation.value.lat,
-      lng: userLocation.value.lng,
-      radius: 10000, // 10km
-      limit: 50
-    });
-
-    if (response.success && response.data?.corners) {
-      nearbyCorners.value = response.data.corners;
-      displayCorners(response.data.corners);
-    }
-  } catch (err) {
-    console.error('Failed to load nearby corners:', err);
+// Map click handler for selecting location
+const handleMapClick = (e) => {
+  const { lat, lng } = e.latlng;
+  
+  // Remove existing temp marker
+  if (tempLocationMarker) {
+    map.value.removeLayer(tempLocationMarker);
   }
+  
+  // Add temp marker to show selected location
+  const tempIcon = L.divIcon({
+    className: 'temp-location-marker',
+    html: '<div class="temp-marker-inner"></div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -30]
+  });
+  
+  // Use markRaw to prevent Vue from proxying the marker
+  tempLocationMarker = markRaw(L.marker([lat, lng], {
+    icon: tempIcon,
+    zIndex: 999
+  }).addTo(map.value));
+  
+  tempLocationMarker.bindPopup('<div style="text-align:center;"><strong>Selected Location</strong><br>Click "Add Corner" to create a corner here</div>');
+  tempLocationMarker.openPopup();
+  
+  // Store selected location for create corner
+  selectedMapLocation.value = { lat, lng };
+};
+
+// Load nearby corners based on user location
+const loadNearbyCorners = async () => {
+  await loadCornersAtLocation(userLocation.value.lat, userLocation.value.lng);
 };
 
 // Display corners on map
@@ -196,7 +362,8 @@ const displayCorners = (corners) => {
 
   corners.forEach(corner => {
     const [lng, lat] = corner.location.coordinates;
-    const marker = L.marker([lat, lng]).addTo(map.value);
+    // Use markRaw to prevent Vue from proxying the marker
+    const marker = markRaw(L.marker([lat, lng]).addTo(map.value));
 
     marker.on('click', () => selectCorner(corner));
     markers.push(marker);
@@ -239,6 +406,65 @@ const clearSearch = () => {
   loadNearbyCorners();
 };
 
+// Reset map to initial state
+const resetMap = () => {
+  // Clear URL query parameters
+  router.replace({ path: '/map' });
+
+  // Clear search query
+  searchQuery.value = '';
+
+  // Clear route display
+  if (routeLayer) {
+    map.value.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+  displayedRoute.value = null;
+  currentRouteCorners.value = null;
+
+  // Remove route stop markers
+  routeMarkers.forEach(marker => {
+    try {
+      map.value.removeLayer(marker);
+    } catch (e) {}
+  });
+  routeMarkers = [];
+
+  // Clear selected corner and close panel
+  selectedCorner.value = null;
+  cornerPosts.value = [];
+
+  // Remove temp location marker
+  if (tempLocationMarker) {
+    map.value.removeLayer(tempLocationMarker);
+    tempLocationMarker = null;
+  }
+  selectedMapLocation.value = null;
+
+  // Move map to current user location and reload nearby corners
+  map.value.setView([userLocation.value.lat, userLocation.value.lng], 14);
+  updateUserMarker();
+  loadNearbyCorners();
+
+  // Try to re-acquire user location in background (will update if successful)
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        userLocation.value = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        map.value.setView([userLocation.value.lat, userLocation.value.lng], 14);
+        updateUserMarker();
+        loadNearbyCorners();
+      },
+      () => {
+        // Location failed, keep using current stored location
+      }
+    );
+  }
+};
+
 // Select corner
 const selectCorner = async (corner) => {
   selectedCorner.value = corner;
@@ -263,28 +489,52 @@ const closePanel = () => {
   cornerPosts.value = [];
 };
 
-// Display route on map
-const displayRoute = (route) => {
+// Display route on map using OSRM for real route
+const displayRoute = async (route) => {
   if (routeLayer) {
     map.value.removeLayer(routeLayer);
+    routeLayer = null;
   }
+
+  // Remove old route stop markers (not corner markers!)
+  routeMarkers.forEach(marker => {
+    try {
+      map.value.removeLayer(marker);
+    } catch (e) {}
+  });
+  routeMarkers = [];
 
   if (!route.corners || route.corners.length < 2) return;
 
-  const latLngs = route.corners.map(corner => {
-    const [lng, lat] = corner.location.coordinates;
-    return [lat, lng];
-  });
+  // Store corners for route display
+  currentRouteCorners.value = route;
 
-  // Create a styled polyline for the route
-  // Note: For real navigation routes, you would need to integrate a routing service like OSRM
-  // This is a simplified visualization connecting the corners directly
-  routeLayer = L.polyline(latLngs, {
-    color: '#409eff',
-    weight: 5,
-    opacity: 0.8,
-    dashArray: '10, 10'
-  }).addTo(map.value);
+  // Extract coordinates from corners
+  const coordinates = route.corners.map(corner => corner.location.coordinates);
+
+  // Try to fetch real route from OSRM (use driving mode by default)
+  const routeData = await fetchRouteFromOSRM(coordinates, 'driving');
+
+  let routeCoordinates;
+  if (routeData && routeData.coordinates) {
+    // Use real route coordinates from OSRM
+    routeCoordinates = routeData.coordinates;
+  } else {
+    // Fallback to straight lines if OSRM fails
+    routeCoordinates = route.corners.map(corner => {
+      const [lng, lat] = corner.location.coordinates;
+      return [lat, lng];
+    });
+  }
+
+  // Create a styled polyline for the route with bright green color
+  routeLayer = markRaw(L.polyline(routeCoordinates, {
+    color: '#00C853', // Bright green
+    weight: 6,
+    opacity: 0.9,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map.value));
 
   // Add markers for each stop
   route.corners.forEach((corner, idx) => {
@@ -296,14 +546,15 @@ const displayRoute = (route) => {
       iconAnchor: [15, 15]
     });
 
-    const marker = L.marker([lat, lng], { icon: stopIcon }).addTo(map.value);
+    const marker = markRaw(L.marker([lat, lng], { icon: stopIcon }).addTo(map.value));
     marker.bindPopup(`<strong>${corner.name}</strong>`);
-    markers.push(marker);
+    routeMarkers.push(marker);
   });
 
   // Fit map to show the entire route
   map.value.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
 
+  // Set displayed route (without distance/duration info)
   displayedRoute.value = route;
 };
 
@@ -314,13 +565,17 @@ const clearRoute = () => {
     routeLayer = null;
   }
   displayedRoute.value = null;
+  currentRouteCorners.value = null;
 
-  // Remove route stop markers
-  markers.forEach(marker => map.value.removeLayer(marker));
-  markers = [];
+  // Remove route stop markers only
+  routeMarkers.forEach(marker => {
+    try {
+      map.value.removeLayer(marker);
+    } catch (e) {}
+  });
+  routeMarkers = [];
 
-  // Reload nearby corners
-  loadNearbyCorners();
+  // Keep corner markers intact so users can still click and view posts
 };
 
 // Format distance
@@ -331,15 +586,154 @@ const formatDistance = (meters) => {
   return `${(meters / 1000).toFixed(1)}km`;
 };
 
+// Get media URL
+const getMediaUrl = (fileId) => {
+  return mediaApi.getUrl(fileId);
+};
+
+// Open image viewer (placeholder for now)
+const openImageViewer = (index) => {
+  // Can be enhanced with a proper image viewer component
+  const imageUrl = getMediaUrl(selectedCorner.value.images[index]);
+  window.open(imageUrl, '_blank');
+};
+
+// Go to create corner page
+const goToCreateCorner = () => {
+  // Use selected map location if available, otherwise use current user location
+  const location = selectedMapLocation.value || userLocation.value;
+  
+  router.push({
+    path: '/create-corner',
+    query: {
+      lat: location.lat,
+      lng: location.lng
+    }
+  });
+};
+
 // Expose displayRoute for external use
 defineExpose({
   displayRoute
 });
 
-onMounted(() => {
+onMounted(async () => {
   initMap();
-  getUserLocation();
+
+  // Check if we need to show a route from URL params or session storage
+  const showRoute = route.query.show_route;
+  const centerLat = route.query.center_lat;
+  const centerLng = route.query.center_lng;
+
+  if (showRoute === 'true') {
+    // Try to get route data from session storage
+    const routeData = sessionStorage.getItem('route_data');
+    if (routeData) {
+      try {
+        const parsedRoute = JSON.parse(routeData);
+        displayRoute(parsedRoute);
+        sessionStorage.removeItem('route_data'); // Clear after use
+      } catch (e) {
+        console.error('Failed to parse route data:', e);
+      }
+    }
+  }
+
+  // Check if we need to highlight a specific corner from URL params
+  const cornerId = route.query.corner_id;
+  const cornerLat = route.query.lat;
+  const cornerLng = route.query.lng;
+
+  if (cornerId && cornerLat && cornerLng) {
+    // First center the map on the corner location
+    map.value.setView([parseFloat(cornerLat), parseFloat(cornerLng)], 16);
+
+    // Load nearby corners around this location
+    try {
+      const response = await cornersApi.getNearby({
+        lat: parseFloat(cornerLat),
+        lng: parseFloat(cornerLng),
+        radius: 5000, // 5km around the corner
+        limit: 50
+      });
+
+      if (response.success && response.data?.corners) {
+        nearbyCorners.value = response.data.corners;
+        displayCorners(response.data.corners);
+
+        // Find and select the specific corner
+        const corner = nearbyCorners.value.find(c => c._id === cornerId);
+        if (corner) {
+          selectCorner(corner);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load corners around target location:', err);
+    }
+  } else {
+    // Normal flow: get user location, then load nearby corners
+    getUserLocation();
+  }
+
+  // Center map if coordinates provided (for route view)
+  if (centerLat && centerLng && !showRoute && !cornerId) {
+    map.value.setView([parseFloat(centerLat), parseFloat(centerLng)], 14);
+  }
 });
+
+// Watch for route query changes to handle corner clicks when already on MapView page
+watch(() => route.query, async (newQuery) => {
+  // Handle corner click from PostCard
+  const cornerId = newQuery.corner_id;
+  const cornerLat = newQuery.lat;
+  const cornerLng = newQuery.lng;
+
+  if (cornerId && cornerLat && cornerLng) {
+    // Clear any existing route display
+    if (routeLayer) {
+      map.value.removeLayer(routeLayer);
+      routeLayer = null;
+    }
+    displayedRoute.value = null;
+    currentRouteCorners.value = null;
+    routeMarkers.forEach(marker => {
+      try {
+        map.value.removeLayer(marker);
+      } catch (e) {}
+    });
+    routeMarkers = [];
+
+    // Clear selected corner
+    selectedCorner.value = null;
+    cornerPosts.value = [];
+
+    // Center map on the corner location
+    map.value.setView([parseFloat(cornerLat), parseFloat(cornerLng)], 16);
+
+    // Load nearby corners around this location
+    try {
+      const response = await cornersApi.getNearby({
+        lat: parseFloat(cornerLat),
+        lng: parseFloat(cornerLng),
+        radius: 5000,
+        limit: 50
+      });
+
+      if (response.success && response.data?.corners) {
+        nearbyCorners.value = response.data.corners;
+        displayCorners(response.data.corners);
+
+        // Find and select the specific corner
+        const corner = nearbyCorners.value.find(c => c._id === cornerId);
+        if (corner) {
+          selectCorner(corner);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load corners around target location:', err);
+    }
+  }
+}, { deep: true });
 
 onUnmounted(() => {
   if (map.value) {
@@ -350,16 +744,17 @@ onUnmounted(() => {
 
 <style scoped>
 .map-view {
-  height: 100vh;
+  height: 100%;
   width: 100%;
   position: relative;
+  overflow: hidden;
 }
 
 /* Search Bar */
 .search-bar {
   position: absolute;
   top: 20px;
-  left: 20px;
+  left: 80px;
   right: 20px;
   z-index: 1000;
   display: flex;
@@ -422,6 +817,57 @@ onUnmounted(() => {
 .search-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
+}
+
+.reset-button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #6c757d 0%, #8a939b 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+  transition: all 0.3s;
+}
+
+.reset-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+}
+
+/* Create Corner Button */
+.create-corner-button {
+  position: absolute;
+  top: 80px;
+  left: 80px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+  transition: all 0.3s;
+  z-index: 1000;
+}
+
+.create-corner-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.5);
+}
+
+.button-icon {
+  font-size: 18px;
+}
+
+.button-label {
+  font-size: 14px;
 }
 
 /* Map Container */
@@ -492,6 +938,40 @@ onUnmounted(() => {
   color: #666;
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+.corner-images {
+  margin-bottom: 20px;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.images-grid img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.images-grid img:hover {
+  opacity: 0.9;
+}
+
+.more-images {
+  position: relative;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .stats {
@@ -622,7 +1102,7 @@ onUnmounted(() => {
 .stop-number {
   width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+  background: linear-gradient(135deg, #00C853 0%, #69F0AE 100%);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -630,6 +1110,7 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 200, 83, 0.4);
 }
 
 .stop-name {
@@ -643,12 +1124,25 @@ onUnmounted(() => {
 }
 
 :deep(.user-marker-inner) {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   background: #409eff;
   border: 3px solid white;
   border-radius: 50%;
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.5);
+}
+
+:deep(.temp-location-marker) {
+  position: relative;
+}
+
+:deep(.temp-marker-inner) {
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.3);
 }
 
 :deep(.route-stop-marker) {
@@ -668,5 +1162,147 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(255, 107, 107, 0.5);
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 600px) {
+  /* Search Bar - Stack vertically and reduce padding */
+  .search-bar {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    flex-direction: column;
+    max-width: none;
+    gap: 8px;
+  }
+
+  .search-input {
+    padding: 10px 12px;
+  }
+
+  .search-input input {
+    font-size: 16px; /* Prevent iOS zoom on focus */
+  }
+
+  .search-button,
+  .reset-button {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  /* Create Corner Button - Smaller and positioned better */
+  .create-corner-button {
+    top: auto;
+    bottom: 90px;
+    left: 10px;
+    padding: 10px 16px;
+    border-radius: 20px;
+  }
+
+  .button-label {
+    display: none; /* Hide text on mobile, show only icon */
+  }
+
+  .button-icon {
+    font-size: 20px;
+  }
+
+  /* Side Panel - Full width on mobile */
+  .side-panel {
+    width: 100%;
+    right: -100%;
+  }
+
+  .panel-header {
+    padding: 14px 16px;
+  }
+
+  .panel-header h2 {
+    font-size: 18px;
+  }
+
+  .panel-content {
+    padding: 14px;
+  }
+
+  .images-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .images-grid img {
+    height: 80px;
+  }
+
+  .stats {
+    gap: 16px;
+    padding: 12px;
+  }
+
+  .stat-number {
+    font-size: 20px;
+  }
+
+  .posts-section h3 {
+    font-size: 15px;
+  }
+
+  .corner-posts {
+    gap: 10px;
+  }
+
+  /* Route Info - Full width and compact */
+  .route-info {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    max-width: none;
+    border-radius: 10px;
+  }
+
+  .route-header {
+    padding: 12px;
+  }
+
+  .route-icon {
+    font-size: 20px;
+  }
+
+  .route-name {
+    font-size: 14px;
+  }
+
+  .route-stops {
+    padding: 8px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .route-stop {
+    padding: 6px 10px;
+  }
+
+  .stop-number {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .stop-name {
+    font-size: 13px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 380px) {
+  .search-button,
+  .reset-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .tab-btn {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
 }
 </style>

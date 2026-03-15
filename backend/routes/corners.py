@@ -72,11 +72,12 @@ def validate_corner_data(data, is_update=False):
 @jwt_optional
 def get_corners():
     """
-    Get list of corners, supports filtering and search.
+    Get list of corners with filtering and search support.
 
     Query parameters:
-        - limit: Maximum number of results to return (default 100)
+        - limit: Return quantity limit (default 100)
         - search: Search keyword (matches name or description)
+        - user_id: User ID, only return corners created by this user
 
     Returns:
         JSON with corners list
@@ -88,10 +89,18 @@ def get_corners():
         limit = 100
 
     search = request.args.get('search')
+    user_id = request.args.get('user_id')
 
     # Query corners
     if search:
         corners = corner_store.search_corners_by_name(search, limit=limit)
+    elif user_id:
+        # Get corners created by specific user
+        try:
+            user_id_obj = ObjectId(user_id)
+            corners = corner_store.find({'creator_id': user_id_obj}, limit=limit)
+        except Exception:
+            return jsonify({'error': 'Invalid user_id parameter'}), 400
     else:
         corners = corner_store.get_all_corners(limit=limit)
 
@@ -148,11 +157,16 @@ def create_corner():
     longitude = float(data['longitude'])
     address = data.get('address', '').strip()
     tags = data.get('tags', [])
+    images = data.get('images', [])
 
     # Check if corner name already exists
     existing_corner = corner_store.get_corner_by_name(name)
     if existing_corner:
         return jsonify({'error': 'Corner with this name already exists'}), 400
+
+    # Get current user ID from JWT token
+    current_user_id = getattr(request, 'user_id', None)
+    creator_id = ObjectId(current_user_id) if current_user_id else None
 
     # Create corner
     try:
@@ -161,7 +175,9 @@ def create_corner():
             description=description,
             latitude=latitude,
             longitude=longitude,
-            address=address
+            address=address,
+            images=images,
+            creator_id=creator_id
         )
 
         # Add tags if provided
@@ -181,6 +197,7 @@ def create_corner():
                 'location': corner['location'],
                 'address': corner['address'],
                 'tags': corner.get('tags', []),
+                'images': corner.get('images', []),
                 'created_at': corner['created_at']
             }
         }), 201
@@ -218,6 +235,7 @@ def get_corner_detail(corner_id):
             'location': corner['location'],
             'address': corner['address'],
             'tags': corner.get('tags', []),
+            'images': [str(img_id) for img_id in corner.get('images', [])],  # Convert ObjectIds to strings
             'created_at': corner['created_at']
         }
     })
@@ -288,6 +306,9 @@ def update_corner(corner_id):
     if 'tags' in data:
         updates['tags'] = data['tags']
 
+    if 'images' in data:
+        updates['images'] = data['images']
+
     # Update corner
     success = corner_store.update(corner_obj, updates)
     if not success:
@@ -306,6 +327,7 @@ def update_corner(corner_id):
             'location': updated_corner['location'],
             'address': updated_corner['address'],
             'tags': updated_corner.get('tags', []),
+            'images': updated_corner.get('images', []),
             'created_at': updated_corner['created_at']
         }
     })
@@ -354,7 +376,7 @@ def get_nearby_corners():
         - lat: Latitude (required, -90 to 90)
         - lng: Longitude (required, -180 to 180)
         - radius: Search radius in meters (default 10000, i.e., 10km)
-        - limit: Maximum number of results (default 20)
+        - limit: Return quantity limit (default 20)
 
     Returns:
         JSON with nearby corners sorted by distance
@@ -412,6 +434,8 @@ def get_nearby_corners():
             'location': corner['location'],
             'address': corner.get('address', ''),
             'distance': round(distance, 2),  # Distance in meters
+            'images': [str(img_id) for img_id in corner.get('images', [])],  # Convert ObjectIds to strings
+            'tags': corner.get('tags', []),
             'created_at': corner.get('created_at')
         }
         result.append(corner_data)
@@ -440,8 +464,8 @@ def get_corner_posts(corner_id):
         corner_id: Corner ID
 
     Query parameters:
-        - limit: Number of posts per page (default 20)
-        - skip: Number of posts to skip (for pagination)
+        - limit: Items per page (default 20)
+        - skip: Number of items to skip (for pagination)
 
     Returns:
         JSON with corner info and posts list
@@ -498,6 +522,28 @@ def get_corner_posts(corner_id):
             creator = user_store.get_user_by_id(post['user_id'])
             if creator:
                 post_data['username'] = creator.get('username', '')
+
+            # Add corner information
+            post_corners = []
+            for corner_id in post.get('corner_ids', []):
+                try:
+                    corner_obj = ObjectId(corner_id) if isinstance(corner_id, str) else corner_id
+                    corner = corner_store.get_corner_by_id(corner_obj)
+                    if corner:
+                        post_corners.append({
+                            '_id': str(corner['_id']),
+                            'name': corner.get('name', ''),
+                            'location': corner.get('location', {})
+                        })
+                except Exception:
+                    pass
+            post_data['corners'] = post_corners
+
+            # Add route if exists
+            if 'route' in post and post['route']:
+                route_data = post['route'].copy()
+                route_data['corner_ids'] = [str(cid) for cid in route_data.get('corner_ids', [])]
+                post_data['route'] = route_data
 
             visible_posts.append(post_data)
 
@@ -644,7 +690,7 @@ def search_corners():
 
     Query parameters:
         - q: Search keyword (required)
-        - limit: Maximum number of results (default 20)
+        - limit: Number of results to return (default 20)
 
     Returns:
         JSON with matching corners
@@ -682,6 +728,7 @@ def search_corners():
             'description': corner.get('description', ''),
             'location': corner.get('location', {}),
             'address': corner.get('address', ''),
+            'images': [str(img_id) for img_id in corner.get('images', [])],  # Convert ObjectIds to strings
             'tags': corner.get('tags', []),
             'created_at': corner.get('created_at')
         })
