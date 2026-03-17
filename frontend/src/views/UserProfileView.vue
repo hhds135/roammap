@@ -3,13 +3,24 @@
     <div class="profile-container">
       <!-- User Info Header -->
       <div class="profile-header">
-        <div class="avatar">{{ user?.username?.charAt(0).toUpperCase() || 'U' }}</div>
+        <div class="avatar" :style="avatarStyle">
+          <img v-if="user?.avatar_id" :src="avatarUrl" alt="Avatar" @error="handleAvatarError" />
+          <span v-else class="avatar-initial">{{ displayInitial }}</span>
+        </div>
         <div class="user-info">
           <div class="user-name-row">
-            <h1>{{ user?.username || 'Unknown User' }}</h1>
-            <button v-if="isSelf" @click="handleLogout" class="logout-btn">
-              Logout
-            </button>
+            <h1>{{ displayName }}</h1>
+            <div v-if="isSelf" class="action-buttons">
+              <button @click="goToEditProfile" class="edit-btn">
+                Edit Profile
+              </button>
+              <button @click="handleLogout" class="logout-btn">
+                Logout
+              </button>
+            </div>
+          </div>
+          <div class="username-hint" v-if="user?.nickname && user.nickname !== user.username">
+            @{{ user.username }}
           </div>
           <div class="stats">
             <div class="stat-item clickable" @click="switchTab('posts')">
@@ -228,9 +239,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useRoute } from 'vue-router';
+import { ref, computed, onMounted, watch, onActivated } from 'vue';
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { useAuth } from '../composables/useAuth';
 import { followsApi } from '../api/follows';
 import { postsApi } from '../api/posts';
@@ -267,6 +277,42 @@ const isSelf = computed(() => {
   return !route.params.userId || currentUser.value?.id === route.params.userId;
 });
 
+const displayName = computed(() => {
+  // Show nickname if available, otherwise show username (for backwards compatibility)
+  return user.value?.nickname || user.value?.username || 'Unknown User';
+});
+
+const displayInitial = computed(() => {
+  const name = displayName.value;
+  return name?.charAt(0)?.toUpperCase() || 'U';
+});
+
+const avatarError = ref(false);
+
+const avatarUrl = computed(() => {
+  if (user.value?.avatar_id) {
+    return mediaApi.getUrl(user.value.avatar_id);
+  }
+  return '';
+});
+
+const avatarStyle = computed(() => {
+  if (user.value?.avatar_id && !avatarError.value) {
+    return {};
+  }
+  return {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+  };
+});
+
+const handleAvatarError = () => {
+  avatarError.value = true;
+};
+
+const goToEditProfile = () => {
+  router.push('/edit-profile');
+};
+
 const switchTab = (tab) => {
   activeTab.value = tab;
   const userId = user.value?.id || currentUser.value?.id;
@@ -285,26 +331,21 @@ const switchTab = (tab) => {
 };
 
 const loadUserProfile = async () => {
-  const userId = route.params.userId;
+  const userId = route.params.userId || currentUser.value?.id;
 
   if (!userId) {
-    // Show current user's profile
-    if (currentUser.value) {
-      user.value = currentUser.value;
-      await loadUserStats(currentUser.value.id);
-      await loadUserPosts(currentUser.value.id);
-    }
     return;
   }
 
-  // Show other user's profile
   try {
-    // Load user interests
+    // Always fetch fresh user data from API (including interest_tags, nickname, avatar_id)
     const interestsResponse = await usersApi.getInterests(userId);
     if (interestsResponse.success && interestsResponse.data) {
       user.value = {
         id: userId,
         username: interestsResponse.data.username,
+        nickname: interestsResponse.data.nickname || '',
+        avatar_id: interestsResponse.data.avatar_id || '',
         interest_tags: interestsResponse.data.interest_tags
       };
     }
@@ -490,9 +531,9 @@ onMounted(() => {
   }
 });
 
-// Watch for route param changes to reload profile
-watch(() => route.params.userId, (newUserId, oldUserId) => {
-  if (newUserId !== oldUserId) {
+// Watch for route changes to reload profile (including when returning from other pages)
+watch(() => route.path, (newPath, oldPath) => {
+  if (newPath !== oldPath && newPath.startsWith('/profile')) {
     // Reset state
     user.value = null;
     posts.value = [];
@@ -507,10 +548,11 @@ watch(() => route.params.userId, (newUserId, oldUserId) => {
     favoritesCount.value = 0;
     activeTab.value = 'posts';
     
-    // Load new profile
+    // Load fresh profile data
     loadUserProfile();
-    if (!newUserId || currentUser.value?.id === newUserId) {
-      loadUserCorners(currentUser.value.id);
+    const userId = route.params.userId || currentUser.value?.id;
+    if (userId && (!route.params.userId || currentUser.value?.id === route.params.userId)) {
+      loadUserCorners(userId);
     }
   }
 });
@@ -552,14 +594,23 @@ const goToProfile = (userId) => {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-initial {
   color: white;
   font-weight: bold;
   font-size: 32px;
-  flex-shrink: 0;
 }
 
 .user-info {
@@ -570,13 +621,43 @@ const goToProfile = (userId) => {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .user-name-row h1 {
   margin: 0;
   font-size: 24px;
   color: #333;
+}
+
+.username-hint {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.edit-btn {
+  padding: 6px 16px;
+  background: #409eff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.edit-btn:hover {
+  background: #66b1ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
 }
 
 .stats {
@@ -934,6 +1015,9 @@ const goToProfile = (userId) => {
   .avatar {
     width: 64px;
     height: 64px;
+  }
+
+  .avatar-initial {
     font-size: 26px;
   }
 
@@ -947,8 +1031,14 @@ const goToProfile = (userId) => {
     font-size: 20px;
   }
 
-  .logout-btn {
+  .action-buttons {
     width: 100%;
+    justify-content: center;
+  }
+
+  .edit-btn,
+  .logout-btn {
+    flex: 1;
     padding: 10px;
   }
 

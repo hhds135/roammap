@@ -74,6 +74,13 @@ export function useAuth() {
     router.push('/login');
   };
 
+  // Update user info in local storage
+  const updateUser = (userData) => {
+    const updatedUser = { ...user.value, ...userData };
+    storage.setUser(updatedUser);
+    user.value = updatedUser;
+  };
+
   return {
     user,
     token,
@@ -83,6 +90,7 @@ export function useAuth() {
     loadUser,
     login,
     register,
-    logout
+    logout,
+    updateUser
   };
 }

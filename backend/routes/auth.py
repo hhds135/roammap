@@ -46,9 +46,11 @@ def register():
     # Create new user in MongoDB
     try:
         password_hash = generate_password_hash(password)
+        # Nickname defaults to username on registration
         user_id = user_store.create_user(
             username=username,
             password_hash=password_hash,
+            nickname=username,  # Default nickname = username
             interest_tags=data.get('interest_tags', [])
         )
     except Exception as e:
@@ -58,6 +60,7 @@ def register():
     user_info = {
         'id': str(user_id),
         'username': username,
+        'nickname': username,
         'interest_tags': data.get('interest_tags', [])
     }
     
@@ -85,6 +88,8 @@ def login():
     user_info = {
         'id': str(user['_id']),
         'username': user['username'],
+        'nickname': user.get('nickname', ''),  # May be empty for legacy users
+        'avatar_id': user.get('avatar_id', ''),  # GridFS file ID
         'interest_tags': user.get('interest_tags', [])
     }
     

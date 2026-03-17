@@ -11,6 +11,10 @@ export const usersApi = {
     });
   },
 
+  updateProfile(userId, profile) {
+    return apiClient.put(`/users/${userId}/profile`, profile);
+  },
+
   search(query, params) {
     return apiClient.get('/users/search', {
       params: {

@@ -12,6 +12,10 @@ user_store = UserStore()
 MAX_INTEREST_TAGS = 10
 MAX_TAG_LENGTH = 20
 
+# Profile limits
+MAX_NICKNAME_LENGTH = 30
+MIN_NICKNAME_LENGTH = 1
+
 
 def validate_interest_tags(tags):
     """
@@ -69,6 +73,8 @@ def get_user_interests(user_id):
         'data': {
             'user_id': user_id,
             'username': user.get('username', ''),
+            'nickname': user.get('nickname', ''),
+            'avatar_id': user.get('avatar_id', ''),
             'interest_tags': interest_tags
         }
     })
@@ -132,6 +138,117 @@ def update_user_interests(user_id):
         'data': {
             'user_id': user_id,
             'username': updated_user.get('username', ''),
+            'nickname': updated_user.get('nickname', ''),
+            'avatar_id': updated_user.get('avatar_id', ''),
+            'interest_tags': updated_user.get('interest_tags', [])
+        }
+    })
+
+
+def validate_nickname(nickname):
+    """
+    Validate nickname.
+    
+    Args:
+        nickname: Nickname to validate
+        
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not isinstance(nickname, str):
+        return False, 'Nickname must be a string'
+    
+    nickname = nickname.strip()
+    
+    if len(nickname) < MIN_NICKNAME_LENGTH:
+        return False, 'Nickname cannot be empty'
+    
+    if len(nickname) > MAX_NICKNAME_LENGTH:
+        return False, f'Nickname cannot exceed {MAX_NICKNAME_LENGTH} characters'
+    
+    return True, None
+
+
+@bp.route('/api/users/<user_id>/profile', methods=['PUT'])
+@jwt_required
+def update_user_profile(user_id):
+    """
+    Update a user's profile (nickname and avatar).
+    
+    Only the user themselves can update their profile.
+    
+    Args:
+        user_id: User ObjectId
+        
+    Request body:
+        - nickname: Display name (optional)
+        - avatar_id: GridFS file ID for avatar image (optional)
+        
+    Returns:
+        JSON with updated profile
+    """
+    current_user_id = request.user_id
+    
+    # Check if user is updating their own profile
+    if current_user_id != user_id:
+        return jsonify({'error': 'Access denied. You can only update your own profile'}), 403
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body is required'}), 400
+    
+    # Validate and prepare updates
+    updates = {}
+    
+    if 'nickname' in data:
+        nickname = data['nickname']
+        is_valid, error = validate_nickname(nickname)
+        if not is_valid:
+            return jsonify({'error': error}), 400
+        updates['nickname'] = nickname.strip()
+    
+    if 'avatar_id' in data:
+        avatar_id = data['avatar_id']
+        if avatar_id is not None and avatar_id != '':
+            if not isinstance(avatar_id, str):
+                return jsonify({'error': 'avatar_id must be a string'}), 400
+            # Validate that it's a valid ObjectId
+            try:
+                ObjectId(avatar_id)
+            except Exception:
+                return jsonify({'error': 'avatar_id must be a valid file ID'}), 400
+        updates['avatar_id'] = avatar_id or ''
+    
+    if not updates:
+        return jsonify({'error': 'No valid fields to update'}), 400
+    
+    try:
+        user_id_obj = ObjectId(user_id)
+    except Exception:
+        return jsonify({'error': 'Invalid user ID'}), 400
+    
+    # Get user to verify exists
+    user = user_store.get_user_by_id(user_id_obj)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Update profile
+    try:
+        if not user_store.update_user(user_id_obj, updates):
+            return jsonify({'error': 'Failed to update profile'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Failed to update profile: {str(e)}'}), 500
+    
+    # Get updated user
+    updated_user = user_store.get_user_by_id(user_id_obj)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'user_id': user_id,
+            'username': updated_user.get('username', ''),
+            'nickname': updated_user.get('nickname', ''),
+            'avatar_id': updated_user.get('avatar_id', ''),
             'interest_tags': updated_user.get('interest_tags', [])
         }
     })

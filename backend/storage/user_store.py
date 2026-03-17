@@ -22,6 +22,8 @@ class UserStore(BaseStore):
     collection_name = "users"
     
     def create_user(self, username: str, password_hash: str,
+                    nickname: Optional[str] = None,
+                    avatar_id: Optional[str] = None,
                     interest_tags: Optional[List[str]] = None,
                     location: Optional[Dict[str, Any]] = None) -> ObjectId:
         """
@@ -30,6 +32,8 @@ class UserStore(BaseStore):
         Args:
             username: Unique username
             password_hash: Hashed password
+            nickname: Display name (defaults to username if not provided)
+            avatar_id: GridFS file ID for avatar image
             interest_tags: List of interest tags
             location: Optional GeoJSON location
             
@@ -42,6 +46,8 @@ class UserStore(BaseStore):
         document = {
             'username': username,
             'password_hash': password_hash,
+            'nickname': nickname or username,  # Default to username
+            'avatar_id': avatar_id or '',  # GridFS file ID
             'interest_tags': interest_tags or [],
             'following': [],
             'followers': [],
