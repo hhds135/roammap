@@ -741,3 +741,162 @@ def search_corners():
             'total': len(result)
         }
     })
+
+
+@bp.route('/api/corners/hot', methods=['GET'])
+@jwt_optional
+def get_hot_corners():
+    """
+    Get hot/popular corners sorted by activity.
+
+    Corners are ranked by:
+    1. Post count (primary)
+    2. Total likes and comments (secondary)
+    3. Recent activity (within 7 days)
+
+    Query parameters:
+        - lat: User's current latitude (optional, for distance calculation)
+        - lng: User's current longitude (optional, for distance calculation)
+        - limit: Number of results to return (default 20)
+        - radius: Filter by radius in meters (optional)
+
+    Returns:
+        JSON with hot corners list
+    """
+    # Get parameters
+    try:
+        limit = int(request.args.get('limit', 20))
+        limit = min(limit, 50)
+    except ValueError:
+        limit = 20
+
+    user_location = None
+    lat = request.args.get('lat')
+    lng = request.args.get('lng')
+    radius = request.args.get('radius')
+
+    if lat and lng:
+        try:
+            user_location = (float(lat), float(lng))
+        except ValueError:
+            pass
+
+    if radius:
+        try:
+            radius = int(radius)
+        except ValueError:
+            radius = None
+
+    # Aggregate pipeline to calculate popularity
+    from datetime import datetime, timedelta
+
+    # Calculate date 7 days ago
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    pipeline = [
+        # Match public and followers-visible posts
+        {
+            "$match": {
+                "visibility": {"$in": ["public", "followers"]},
+                "corner_ids": {"$exists": True, "$ne": []}
+            }
+        },
+        # Unwind corner_ids to get one document per corner
+        {
+            "$unwind": "$corner_ids"
+        },
+        # Group by corner and calculate metrics
+        {
+            "$group": {
+                "_id": "$corner_ids",
+                "post_count": {"$sum": 1},
+                "total_likes": {"$sum": "$stats.likes_count"},
+                "total_comments": {"$sum": "$stats.comments_count"},
+                "recent_posts": {
+                    "$sum": {
+                        "$cond": [
+                            {"$gte": ["$created_at", seven_days_ago.isoformat()]},
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        # Calculate popularity score
+        # Score = post_count * 10 + total_likes + total_comments * 2 + recent_posts * 5
+        {
+            "$addFields": {
+                "popularity_score": {
+                    "$add": [
+                        {"$multiply": ["$post_count", 10]},
+                        "$total_likes",
+                        {"$multiply": ["$total_comments", 2]},
+                        {"$multiply": ["$recent_posts", 5]}
+                    ]
+                }
+            }
+        },
+        # Sort by popularity score
+        {
+            "$sort": {"popularity_score": -1}
+        },
+        # Limit results
+        {
+            "$limit": limit * 2  # Get more for filtering
+        }
+    ]
+
+    try:
+        popularity_stats = list(post_store.collection.aggregate(pipeline))
+    except Exception as e:
+        return jsonify({'error': f'Failed to calculate popularity: {str(e)}'}), 500
+
+    # Get corner details and build result
+    result = []
+    for stat in popularity_stats:
+        corner_id = stat['_id']
+        corner = corner_store.get_corner_by_id(corner_id)
+
+        if not corner:
+            continue
+
+        # Calculate distance if user location provided
+        distance = None
+        if user_location and 'location' in corner:
+            distance = corner_store.calculate_distance(
+                user_location[0], user_location[1],
+                corner['location']['coordinates'][1],
+                corner['location']['coordinates'][0]
+            )
+            # Filter by radius if specified
+            if radius and distance > radius:
+                continue
+
+        corner_data = {
+            '_id': str(corner['_id']),
+            'name': corner.get('name', ''),
+            'description': corner.get('description', ''),
+            'location': corner.get('location', {}),
+            'address': corner.get('address', ''),
+            'images': [str(img_id) for img_id in corner.get('images', [])],
+            'tags': corner.get('tags', []),
+            'post_count': stat['post_count'],
+            'total_likes': stat['total_likes'],
+            'total_comments': stat['total_comments'],
+            'recent_posts': stat['recent_posts'],
+            'popularity_score': stat['popularity_score'],
+            'distance': round(distance, 2) if distance else None
+        }
+        result.append(corner_data)
+
+        if len(result) >= limit:
+            break
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'corners': result,
+            'total': len(result)
+        }
+    })

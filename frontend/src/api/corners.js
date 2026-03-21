@@ -16,6 +16,11 @@ export const cornersApi = {
     return apiClient.get('/corners/nearby', { params });
   },
 
+  // Get hot/popular corners
+  getHot: (params) => {
+    return apiClient.get('/corners/hot', { params });
+  },
+
   // Get corner details
   get: (cornerId) => {
     return apiClient.get(`/corners/${cornerId}`);
