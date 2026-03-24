@@ -29,6 +29,14 @@
     <div :class="['side-panel', { open: selectedCorner }]">
       <div class="panel-header">
         <h2>{{ selectedCorner?.name || '' }}</h2>
+        <button 
+          @click="toggleCornerCollection" 
+          :class="['collection-btn-mini', { active: isInCollection(selectedCorner) }]"
+          v-if="selectedCorner"
+          :title="isInCollection(selectedCorner) ? 'Remove from Collection' : 'Add to Collection'"
+        >
+          <span class="collection-icon-mini">{{ isInCollection(selectedCorner) ? '✓' : '➕' }}</span>
+        </button>
         <button @click="closePanel" class="close-button">×</button>
       </div>
 
@@ -86,11 +94,55 @@
       </div>
     </div>
 
+    <!-- Corner Collection Display -->
+    <div v-if="cornerCollection.length > 0" class="collection-panel">
+      <div class="collection-header">
+        <span class="collection-title-icon">📍</span>
+        <span class="collection-title">My Collection ({{ cornerCollection.length }})</span>
+        <button @click="clearCollection" class="clear-collection">×</button>
+      </div>
+      <div class="collection-items">
+        <div
+          v-for="(corner, idx) in cornerCollection"
+          :key="corner._id"
+          class="collection-item"
+        >
+          <span class="collection-index">{{ idx + 1 }}</span>
+          <span class="collection-name">{{ corner.name }}</span>
+          <div class="collection-actions">
+            <button 
+              @click="moveCornerUp(idx)" 
+              class="move-up"
+              :disabled="idx === 0"
+              title="Move up"
+            >
+              ↑
+            </button>
+            <button 
+              @click="moveCornerDown(idx)" 
+              class="move-down"
+              :disabled="idx === cornerCollection.length - 1"
+              title="Move down"
+            >
+              ↓
+            </button>
+            <button @click="removeFromCollection(corner)" class="remove-item" title="Remove">×</button>
+          </div>
+        </div>
+      </div>
+      <div class="collection-actions">
+        <button @click="planCollectionRoute" class="plan-route-btn">
+          <span class="plan-icon">🛤️</span>
+          <span class="plan-text">Plan Route</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Route Display (if any route is selected) -->
     <div v-if="displayedRoute" class="route-info">
       <div class="route-header">
         <span class="route-icon">🛤️</span>
-        <span class="route-name">{{ displayedRoute.route_name }}</span>
+        <span class="route-name">{{ displayedRoute.route_name || 'My Route' }}</span>
         <button @click="clearRoute" class="clear-route">×</button>
       </div>
       <div class="route-stops">
@@ -177,6 +229,7 @@ const loadingPosts = ref(false);
 const searchQuery = ref('');
 const displayedRoute = ref(null);
 const currentRouteCorners = ref(null); // Store corners for route display
+const cornerCollection = ref([]); // Store corners in collection
 
 let markers = []; // Corner markers (clickable to view posts)
 let routeMarkers = []; // Route stop markers (numbered 1, 2, 3...)
@@ -487,6 +540,71 @@ const selectCorner = async (corner) => {
 const closePanel = () => {
   selectedCorner.value = null;
   cornerPosts.value = [];
+
+  // Clear URL query parameters for corner
+  if (route.query.corner_id) {
+    router.replace({ path: '/map' });
+  }
+};
+
+// Corner Collection Functions
+const isInCollection = (corner) => {
+  if (!corner) return false;
+  return cornerCollection.value.some(c => c._id === corner._id);
+};
+
+const toggleCornerCollection = () => {
+  if (!selectedCorner.value) return;
+  
+  if (isInCollection(selectedCorner.value)) {
+    removeFromCollection(selectedCorner.value);
+  } else {
+    cornerCollection.value.push(selectedCorner.value);
+  }
+};
+
+const removeFromCollection = (corner) => {
+  cornerCollection.value = cornerCollection.value.filter(c => c._id !== corner._id);
+};
+
+const moveCornerUp = (index) => {
+  if (index === 0) return;
+  
+  const newCollection = [...cornerCollection.value];
+  [newCollection[index], newCollection[index - 1]] = [newCollection[index - 1], newCollection[index]];
+  cornerCollection.value = newCollection;
+};
+
+const moveCornerDown = (index) => {
+  if (index === cornerCollection.value.length - 1) return;
+  
+  const newCollection = [...cornerCollection.value];
+  [newCollection[index], newCollection[index + 1]] = [newCollection[index + 1], newCollection[index]];
+  cornerCollection.value = newCollection;
+};
+
+const clearCollection = () => {
+  cornerCollection.value = [];
+};
+
+const planCollectionRoute = async () => {
+  if (cornerCollection.value.length === 0) return;
+
+  // Create route: o -> A -> B -> C -> o
+  // where o is current user location
+  const routeCorners = [];
+  
+  // Add corners from collection
+  routeCorners.push(...cornerCollection.value);
+  
+  // Create route object
+  const route = {
+    route_name: 'My Collection Route',
+    corners: routeCorners
+  };
+  
+  // Display route with user location as start and end
+  await displayCollectionRoute(route);
 };
 
 // Display route on map using OSRM for real route
@@ -558,6 +676,108 @@ const displayRoute = async (route) => {
   displayedRoute.value = route;
 };
 
+// Display collection route with user location as start and end
+const displayCollectionRoute = async (route) => {
+  if (routeLayer) {
+    map.value.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+
+  // Remove old route stop markers
+  routeMarkers.forEach(marker => {
+    try {
+      map.value.removeLayer(marker);
+    } catch (e) {}
+  });
+  routeMarkers = [];
+
+  if (!route.corners || route.corners.length === 0) return;
+
+  // Store corners for route display
+  currentRouteCorners.value = route;
+
+  // Create route: o -> A -> B -> C -> o
+  // Prepare coordinates for OSRM: [user_location, corner1, corner2, corner3, user_location]
+  const coordinates = [];
+  
+  // Add user location as start
+  coordinates.push([userLocation.value.lng, userLocation.value.lat]);
+  
+  // Add corners in order
+  route.corners.forEach(corner => {
+    coordinates.push(corner.location.coordinates);
+  });
+  
+  // Add user location as end (to complete the loop)
+  coordinates.push([userLocation.value.lng, userLocation.value.lat]);
+
+  // Try to fetch real route from OSRM
+  const routeData = await fetchRouteFromOSRM(coordinates, 'driving');
+
+  let routeCoordinates;
+  if (routeData && routeData.coordinates) {
+    // Use real route coordinates from OSRM
+    routeCoordinates = routeData.coordinates;
+  } else {
+    // Fallback to straight lines if OSRM fails
+    routeCoordinates = [];
+    
+    // Add user location
+    routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
+    
+    // Add corners
+    route.corners.forEach(corner => {
+      const [lng, lat] = corner.location.coordinates;
+      routeCoordinates.push([lat, lng]);
+    });
+    
+    // Add user location again to complete the loop
+    routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
+  }
+
+  // Create a styled polyline for the route with PURPLE color
+  routeLayer = markRaw(L.polyline(routeCoordinates, {
+    color: '#9C27B0', // Purple
+    weight: 6,
+    opacity: 0.9,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map.value));
+
+  // Add markers for each stop
+  // Start marker (user location)
+  const startIcon = L.divIcon({
+    className: 'route-stop-marker start-marker',
+    html: '<div class="stop-number">📍</div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  });
+  const startMarker = markRaw(L.marker([userLocation.value.lat, userLocation.value.lng], { icon: startIcon }).addTo(map.value));
+  startMarker.bindPopup('<strong>Your Location</strong>');
+  routeMarkers.push(startMarker);
+
+  // Add markers for each corner
+  route.corners.forEach((corner, idx) => {
+    const [lng, lat] = corner.location.coordinates;
+    const stopIcon = L.divIcon({
+      className: 'route-stop-marker',
+      html: `<div class="stop-number">${idx + 1}</div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+
+    const marker = markRaw(L.marker([lat, lng], { icon: stopIcon }).addTo(map.value));
+    marker.bindPopup(`<strong>${corner.name}</strong>`);
+    routeMarkers.push(marker);
+  });
+
+  // Fit map to show the entire route
+  map.value.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+  // Set displayed route
+  displayedRoute.value = route;
+};
+
 // Clear route display
 const clearRoute = () => {
   if (routeLayer) {
@@ -574,6 +794,11 @@ const clearRoute = () => {
     } catch (e) {}
   });
   routeMarkers = [];
+
+  // Clear URL query parameters for route
+  if (route.query.show_route) {
+    router.replace({ path: '/map' });
+  }
 
   // Keep corner markers intact so users can still click and view posts
 };
@@ -681,13 +906,14 @@ onMounted(async () => {
   }
 });
 
-// Watch for route query changes to handle corner clicks when already on MapView page
+// Watch for route query changes to handle corner clicks and route display when already on MapView page
 watch(() => route.query, async (newQuery) => {
-  // Handle corner click from PostCard
+  const showRoute = newQuery.show_route;
   const cornerId = newQuery.corner_id;
   const cornerLat = newQuery.lat;
   const cornerLng = newQuery.lng;
 
+  // Handle corner click from PostCard (handle first to clear any existing route)
   if (cornerId && cornerLat && cornerLng) {
     // Clear any existing route display
     if (routeLayer) {
@@ -731,6 +957,38 @@ watch(() => route.query, async (newQuery) => {
       }
     } catch (err) {
       console.error('Failed to load corners around target location:', err);
+    }
+  }
+
+  // Handle route display from PostCard (handle after corner click)
+  if (showRoute === 'true') {
+    // Clear any existing route display
+    if (routeLayer) {
+      map.value.removeLayer(routeLayer);
+      routeLayer = null;
+    }
+    displayedRoute.value = null;
+    currentRouteCorners.value = null;
+    routeMarkers.forEach(marker => {
+      try {
+        map.value.removeLayer(marker);
+      } catch (e) {}
+    });
+    routeMarkers = [];
+
+    // Clear collection panel (we're showing a post route, not collection route)
+    cornerCollection.value = [];
+
+    // Try to get route data from session storage
+    const routeData = sessionStorage.getItem('route_data');
+    if (routeData) {
+      try {
+        const parsedRoute = JSON.parse(routeData);
+        displayRoute(parsedRoute);
+        sessionStorage.removeItem('route_data'); // Clear after use
+      } catch (e) {
+        console.error('Failed to parse route data:', e);
+      }
     }
   }
 }, { deep: true });
@@ -899,20 +1157,60 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid #f0f0f0;
+  gap: 12px;
 }
 
 .panel-header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   color: #333;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-btn-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  flex-shrink: 0;
+}
+
+.collection-btn-mini:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.collection-btn-mini.active {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+}
+
+.collection-btn-mini.active:hover {
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+}
+
+.collection-icon-mini {
+  font-size: 18px;
 }
 
 .close-button {
   background: none;
   border: none;
-  font-size: 28px;
+  font-size: 24px;
   color: #999;
   cursor: pointer;
   padding: 0;
@@ -922,6 +1220,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   transition: color 0.3s;
+  flex-shrink: 0;
 }
 
 .close-button:hover {
@@ -1035,8 +1334,197 @@ onUnmounted(() => {
 
 .corner-posts {
   display: flex;
-  flex-direction: column;
+  column-direction: column;
   gap: 12px;
+}
+
+/* Collection Panel */
+.collection-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  max-width: 400px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.collection-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.collection-title-icon {
+  font-size: 24px;
+}
+
+.collection-title {
+  flex: 1;
+  font-weight: 600;
+  color: #333;
+  font-size: 16px;
+}
+
+.clear-collection {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-collection:hover {
+  color: #333;
+}
+
+.collection-items {
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.collection-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.3s;
+}
+
+.collection-item:hover {
+  background: #e9ecef;
+}
+
+.collection-index {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.collection-name {
+  flex: 1;
+  color: #333;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.move-up,
+.move-down {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.move-up:hover:not(:disabled),
+.move-down:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+}
+
+.move-up:disabled,
+.move-down:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.remove-item {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.remove-item:hover {
+  background: #ff6b6b;
+  color: white;
+}
+
+.collection-actions {
+  padding: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.plan-route-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #9C27B0 0%, #E040FB 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(156, 39, 176, 0.3);
+}
+
+.plan-route-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(156, 39, 176, 0.4);
+}
+
+.plan-icon {
+  font-size: 18px;
+}
+
+.plan-text {
+  font-size: 14px;
 }
 
 /* Route Info */
@@ -1214,11 +1702,20 @@ onUnmounted(() => {
   }
 
   .panel-header {
-    padding: 14px 16px;
+    padding: 12px 14px;
   }
 
   .panel-header h2 {
-    font-size: 18px;
+    font-size: 16px;
+  }
+
+  .collection-btn-mini {
+    width: 32px;
+    height: 32px;
+  }
+
+  .collection-icon-mini {
+    font-size: 16px;
   }
 
   .panel-content {
@@ -1289,6 +1786,29 @@ onUnmounted(() => {
 
   .stop-name {
     font-size: 13px;
+  }
+
+  .collection-item {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .collection-index {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .collection-name {
+    font-size: 13px;
+  }
+
+  .move-up,
+  .move-down,
+  .remove-item {
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
   }
 }
 
