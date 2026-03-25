@@ -104,7 +104,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { postsApi } from '../api/posts';
 import MediaUploader from '../components/Media/MediaUploader.vue';
@@ -121,6 +121,28 @@ const formData = ref({
   corners: [],
   tags: [],
   visibility: 'public'
+});
+
+// Load corner collection from sessionStorage if available
+onMounted(() => {
+  console.log('[CreatePostView] onMounted called');
+  const savedCollection = sessionStorage.getItem('postCornerCollection');
+  console.log('[CreatePostView] Saved collection from sessionStorage:', savedCollection);
+  if (savedCollection) {
+    try {
+      const corners = JSON.parse(savedCollection);
+      console.log('[CreatePostView] Parsed corners:', corners);
+      formData.value.corners = corners;
+      console.log('[CreatePostView] formData.corners after setting:', formData.value.corners);
+      // Clear the key after successfully reading
+      sessionStorage.removeItem('postCornerCollection');
+      console.log('[CreatePostView] Cleared postCornerCollection from sessionStorage');
+    } catch (e) {
+      console.error('[CreatePostView] Failed to parse corner collection:', e);
+      // Clear the key even on error
+      sessionStorage.removeItem('postCornerCollection');
+    }
+  }
 });
 
 const newTag = ref('');
@@ -200,6 +222,8 @@ const handleSubmit = async () => {
     const response = await postsApi.create(postData);
 
     if (response.success && response.data) {
+      // Clear corner collection from sessionStorage after successful post creation
+      sessionStorage.removeItem('cornerCollection');
       router.push('/feed');
     } else {
       error.value = response.error?.message || 'Failed to create post';

@@ -131,9 +131,17 @@
         </div>
       </div>
       <div class="collection-actions">
+        <label class="loop-checkbox">
+          <input type="checkbox" v-model="loopRoute" />
+          <span class="loop-text">loop</span>
+        </label>
         <button @click="planCollectionRoute" class="plan-route-btn">
           <span class="plan-icon">🛤️</span>
           <span class="plan-text">Plan Route</span>
+        </button>
+        <button @click="createPostFromCollection" class="create-post-btn">
+          <span class="create-icon">✏️</span>
+          <span class="create-text">Create Post</span>
         </button>
       </div>
     </div>
@@ -170,43 +178,6 @@ import { postsApi } from '../api/posts';
 import { mediaApi } from '../api/media';
 import PostCard from '../components/Feed/PostCard.vue';
 
-// Handle route changes - reset map state when navigating away from map with query params
-const handleRouteChange = (newRoute) => {
-  // Only reset if we're leaving /map with query params (corner_id, show_route, etc.)
-  if (newRoute.path === '/map' && Object.keys(newRoute.query).length > 0) {
-    return; // Don't reset, we're navigating to map with params
-  }
-  
-  // Reset state when navigating away from /map
-  if (newRoute.path !== '/map') {
-    // Clear all state
-    searchQuery.value = '';
-    selectedCorner.value = null;
-    cornerPosts.value = [];
-    displayedRoute.value = null;
-    currentRouteCorners.value = null;
-    routeMode.value = 'driving';
-    
-    if (routeLayer && map.value) {
-      map.value.removeLayer(routeLayer);
-      routeLayer = null;
-    }
-    
-    routeMarkers.forEach(marker => {
-      try {
-        if (map.value) map.value.removeLayer(marker);
-      } catch (e) {}
-    });
-    routeMarkers = [];
-    
-    if (tempLocationMarker && map.value) {
-      map.value.removeLayer(tempLocationMarker);
-      tempLocationMarker = null;
-    }
-    selectedMapLocation.value = null;
-  }
-};
-
 const router = useRouter();
 const route = useRoute();
 
@@ -230,6 +201,12 @@ const searchQuery = ref('');
 const displayedRoute = ref(null);
 const currentRouteCorners = ref(null); // Store corners for route display
 const cornerCollection = ref([]); // Store corners in collection
+const loopRoute = ref(false); // Whether to loop back to origin
+
+// Watch cornerCollection changes
+watch(cornerCollection, (newVal) => {
+  console.log('[MapView] cornerCollection changed:', newVal.length, 'corners');
+});
 
 let markers = []; // Corner markers (clickable to view posts)
 let routeMarkers = []; // Route stop markers (numbered 1, 2, 3...)
@@ -587,24 +564,40 @@ const clearCollection = () => {
   cornerCollection.value = [];
 };
 
+// Create post from corner collection
+const createPostFromCollection = () => {
+  if (cornerCollection.value.length === 0) {
+    alert('Please add at least one corner to your collection first');
+    return;
+  }
+
+  // Save corner collection to sessionStorage with a dedicated key
+  const collectionToSave = JSON.stringify(cornerCollection.value);
+  sessionStorage.setItem('postCornerCollection', collectionToSave);
+  console.log('[MapView] Saved corner collection for post creation:', cornerCollection.value.length, 'corners');
+
+  // Navigate to create post page
+  router.push('/create');
+};
+
 const planCollectionRoute = async () => {
   if (cornerCollection.value.length === 0) return;
 
-  // Create route: o -> A -> B -> C -> o
+  // Create route: o -> A -> B -> C -> o (if loop) or A -> B -> C (if not loop)
   // where o is current user location
   const routeCorners = [];
-  
+
   // Add corners from collection
   routeCorners.push(...cornerCollection.value);
-  
+
   // Create route object
   const route = {
     route_name: 'My Collection Route',
     corners: routeCorners
   };
-  
-  // Display route with user location as start and end
-  await displayCollectionRoute(route);
+
+  // Display route with or without loop based on checkbox
+  await displayCollectionRoute(route, loopRoute.value);
 };
 
 // Display route on map using OSRM for real route
@@ -676,8 +669,8 @@ const displayRoute = async (route) => {
   displayedRoute.value = route;
 };
 
-// Display collection route with user location as start and end
-const displayCollectionRoute = async (route) => {
+// Display collection route with optional loop back to origin
+const displayCollectionRoute = async (route, loop = true) => {
   if (routeLayer) {
     map.value.removeLayer(routeLayer);
     routeLayer = null;
@@ -696,20 +689,24 @@ const displayCollectionRoute = async (route) => {
   // Store corners for route display
   currentRouteCorners.value = route;
 
-  // Create route: o -> A -> B -> C -> o
-  // Prepare coordinates for OSRM: [user_location, corner1, corner2, corner3, user_location]
+  // Prepare coordinates for OSRM
   const coordinates = [];
-  
-  // Add user location as start
-  coordinates.push([userLocation.value.lng, userLocation.value.lat]);
-  
+
+  if (loop) {
+    // Create route: o -> A -> B -> C -> o
+    // Add user location as start
+    coordinates.push([userLocation.value.lng, userLocation.value.lat]);
+  }
+
   // Add corners in order
   route.corners.forEach(corner => {
     coordinates.push(corner.location.coordinates);
   });
-  
-  // Add user location as end (to complete the loop)
-  coordinates.push([userLocation.value.lng, userLocation.value.lat]);
+
+  if (loop) {
+    // Add user location as end (to complete the loop)
+    coordinates.push([userLocation.value.lng, userLocation.value.lat]);
+  }
 
   // Try to fetch real route from OSRM
   const routeData = await fetchRouteFromOSRM(coordinates, 'driving');
@@ -721,18 +718,22 @@ const displayCollectionRoute = async (route) => {
   } else {
     // Fallback to straight lines if OSRM fails
     routeCoordinates = [];
-    
-    // Add user location
-    routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
-    
+
+    if (loop) {
+      // Add user location
+      routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
+    }
+
     // Add corners
     route.corners.forEach(corner => {
       const [lng, lat] = corner.location.coordinates;
       routeCoordinates.push([lat, lng]);
     });
-    
-    // Add user location again to complete the loop
-    routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
+
+    if (loop) {
+      // Add user location again to complete the loop
+      routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
+    }
   }
 
   // Create a styled polyline for the route with PURPLE color
@@ -745,16 +746,18 @@ const displayCollectionRoute = async (route) => {
   }).addTo(map.value));
 
   // Add markers for each stop
-  // Start marker (user location)
-  const startIcon = L.divIcon({
-    className: 'route-stop-marker start-marker',
-    html: '<div class="stop-number">📍</div>',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15]
-  });
-  const startMarker = markRaw(L.marker([userLocation.value.lat, userLocation.value.lng], { icon: startIcon }).addTo(map.value));
-  startMarker.bindPopup('<strong>Your Location</strong>');
-  routeMarkers.push(startMarker);
+  if (loop) {
+    // Add start marker (user location) only if loop is enabled
+    const startIcon = L.divIcon({
+      className: 'route-stop-marker start-marker',
+      html: '<div class="stop-number">📍</div>',
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+    const startMarker = markRaw(L.marker([userLocation.value.lat, userLocation.value.lng], { icon: startIcon }).addTo(map.value));
+    startMarker.bindPopup('<strong>Your Location</strong>');
+    routeMarkers.push(startMarker);
+  }
 
   // Add markers for each corner
   route.corners.forEach((corner, idx) => {
@@ -842,7 +845,10 @@ defineExpose({
   displayRoute
 });
 
+// Watch for route changes to handle navigation away from map
 onMounted(async () => {
+  console.log('[MapView] onMounted called');
+  console.log('[MapView] Current route:', route.path);
   initMap();
 
   // Check if we need to show a route from URL params or session storage
@@ -1494,10 +1500,12 @@ onUnmounted(() => {
 .collection-actions {
   padding: 12px;
   border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 8px;
 }
 
 .plan-route-btn {
-  width: 100%;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1524,6 +1532,63 @@ onUnmounted(() => {
 }
 
 .plan-text {
+  font-size: 14px;
+}
+
+.loop-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.loop-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #9C27B0;
+}
+
+.loop-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #555;
+}
+
+.create-post-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.create-post-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.create-post-btn:active {
+  transform: translateY(0);
+}
+
+.create-icon {
+  font-size: 16px;
+}
+
+.create-text {
   font-size: 14px;
 }
 

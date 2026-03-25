@@ -59,7 +59,10 @@ const handleSubmit = async () => {
     if (response.success && response.data) {
       const newComment = {
         ...response.data,
-        _id: response.data._id || Date.now().toString()
+        _id: response.data._id || Date.now().toString(),
+        // Ensure these fields are at the top level for CommentList compatibility
+        username: response.data.username || response.data.user?.username,
+        user_id: response.data.user_id || response.data.user?._id
       };
       emit('commentAdded', newComment);
       content.value = '';
