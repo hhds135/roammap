@@ -596,8 +596,10 @@ const planCollectionRoute = async () => {
     corners: routeCorners
   };
 
-  // Display route with or without loop based on checkbox
-  await displayCollectionRoute(route, loopRoute.value);
+  // If only one corner, always show route from current location to corner (no loop)
+  // regardless of loop checkbox state
+  const shouldLoop = cornerCollection.value.length > 1 ? loopRoute.value : false;
+  await displayCollectionRoute(route, shouldLoop);
 };
 
 // Display route on map using OSRM for real route
@@ -689,11 +691,15 @@ const displayCollectionRoute = async (route, loop = true) => {
   // Store corners for route display
   currentRouteCorners.value = route;
 
+  // Determine if route should include start point
+  // - If only 1 corner: always include start (current location -> corner)
+  // - If multiple corners: only include start if loop is enabled
+  const shouldIncludeStart = route.corners.length === 1 || loop;
+
   // Prepare coordinates for OSRM
   const coordinates = [];
 
-  if (loop) {
-    // Create route: o -> A -> B -> C -> o
+  if (shouldIncludeStart) {
     // Add user location as start
     coordinates.push([userLocation.value.lng, userLocation.value.lat]);
   }
@@ -704,7 +710,7 @@ const displayCollectionRoute = async (route, loop = true) => {
   });
 
   if (loop) {
-    // Add user location as end (to complete the loop)
+    // Add user location as end only if loop is enabled (to complete the loop)
     coordinates.push([userLocation.value.lng, userLocation.value.lat]);
   }
 
@@ -719,7 +725,7 @@ const displayCollectionRoute = async (route, loop = true) => {
     // Fallback to straight lines if OSRM fails
     routeCoordinates = [];
 
-    if (loop) {
+    if (shouldIncludeStart) {
       // Add user location
       routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
     }
@@ -731,7 +737,7 @@ const displayCollectionRoute = async (route, loop = true) => {
     });
 
     if (loop) {
-      // Add user location again to complete the loop
+      // Add user location again to complete the loop only if loop is enabled
       routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
     }
   }
@@ -745,9 +751,8 @@ const displayCollectionRoute = async (route, loop = true) => {
     lineJoin: 'round'
   }).addTo(map.value));
 
-  // Add markers for each stop
-  if (loop) {
-    // Add start marker (user location) only if loop is enabled
+  if (shouldIncludeStart) {
+    // Add start marker (user location)
     const startIcon = L.divIcon({
       className: 'route-stop-marker start-marker',
       html: '<div class="stop-number">📍</div>',

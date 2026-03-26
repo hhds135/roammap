@@ -142,25 +142,40 @@
       </div>
 
       <!-- Tag Filter (for recommendation) -->
-      <div v-if="currentFeedType === 'recommendation'" class="tag-filter">
-        <div class="tag-input-wrapper">
-          <span class="tag-icon">#</span>
-          <input
-            v-model="tagFilter"
-            type="text"
-            placeholder="Enter tag to filter posts..."
-            @keyup.enter="applyTagFilter"
-          />
-          <button v-if="tagFilter" @click="clearTagFilter" class="clear-tag">×</button>
+      <div v-if="currentFeedType === 'recommendation'" class="tag-filter-section">
+        <div class="tag-input-container">
+          <div class="tag-input-wrapper">
+            <span class="tag-icon">#</span>
+            <input
+              v-model="tagInput"
+              type="text"
+              placeholder="Enter tag to filter posts..."
+              @keyup.enter="addTag"
+            />
+            <button v-if="tagInput" @click="clearTagInput" class="clear-tag">×</button>
+          </div>
+          <button @click="addTag" class="filter-button">Filter</button>
         </div>
-        <button @click="applyTagFilter" class="filter-button">Filter</button>
+
+        <!-- Selected Tags -->
+        <div v-if="selectedTags.length > 0" class="selected-tags">
+          <span
+            v-for="(tag, index) in selectedTags"
+            :key="index"
+            class="selected-tag"
+          >
+            #{{ tag }}
+            <button @click="removeTag(index)" class="remove-tag">×</button>
+          </span>
+          <button @click="clearAllTags" class="clear-all-tags">Clear all</button>
+        </div>
       </div>
 
       <div v-if="error && currentFeedType !== 'finding'" class="error-message">{{ error }}</div>
 
       <div v-else-if="displayPosts.length === 0 && !isLoading && currentFeedType !== 'finding'" class="empty-state">
-        <p v-if="tagFilter">
-          No posts found with "#{{ tagFilter }}" tag
+        <p v-if="selectedTags.length > 0">
+          No posts found with tags: {{ selectedTags.map(t => '#' + t).join(', ') }}
         </p>
         <p v-else-if="currentFeedType === 'following'">
           You're not following anyone yet. Discover interesting content!
@@ -181,12 +196,12 @@
         />
       </div>
 
-      <div v-if="isLoading && !tagFilter && currentFeedType !== 'finding'" class="loading">
+      <div v-if="isLoading && selectedTags.length === 0 && currentFeedType !== 'finding'" class="loading">
         <div class="spinner"></div>
         <p>Loading...</p>
       </div>
 
-      <div v-if="!tagFilter && !hasMore && displayPosts.length > 0 && currentFeedType !== 'finding'" class="end-message">
+      <div v-if="selectedTags.length === 0 && !hasMore && displayPosts.length > 0 && currentFeedType !== 'finding'" class="end-message">
         <p>You've reached the end</p>
       </div>
     </div>
@@ -214,7 +229,8 @@ const skip = ref(0);
 const limit = 20;
 
 const currentFeedType = ref('following');
-const tagFilter = ref('');
+const tagInput = ref('');
+const selectedTags = ref([]);
 const filteredPosts = ref([]);
 const tagFilterLoading = ref(false);
 const userLocation = ref(null);
@@ -233,7 +249,7 @@ const showSearchResults = ref(false);
 const isLoading = computed(() => loading.value || tagFilterLoading.value);
 
 const displayPosts = computed(() => {
-  return tagFilter.value ? filteredPosts.value : posts.value;
+  return selectedTags.value.length > 0 ? filteredPosts.value : posts.value;
 });
 
 // Get user location
@@ -411,9 +427,10 @@ const refresh = () => {
 
 const switchFeed = (type) => {
   if (currentFeedType.value === type) return;
-  
+
   currentFeedType.value = type;
-  tagFilter.value = '';
+  tagInput.value = '';
+  selectedTags.value = [];
   filteredPosts.value = [];
   searchQuery.value = '';
   searchResults.value = [];
@@ -444,27 +461,57 @@ const handlePostDeleted = (postId) => {
   }
 };
 
-const applyTagFilter = async () => {
-  const tag = tagFilter.value.trim();
+const addTag = async () => {
+  const tag = tagInput.value.trim();
   if (!tag) return;
+
+  // Check if tag already exists
+  if (selectedTags.value.includes(tag)) {
+    tagInput.value = '';
+    return;
+  }
+
+  // Add tag to selected tags
+  selectedTags.value.push(tag);
+  tagInput.value = '';
+
+  // Search with all selected tags (AND logic)
+  await searchWithTags();
+};
+
+const removeTag = async (index) => {
+  selectedTags.value.splice(index, 1);
+  await searchWithTags();
+};
+
+const clearAllTags = async () => {
+  selectedTags.value = [];
+  filteredPosts.value = [];
+};
+
+const clearTagInput = () => {
+  tagInput.value = '';
+};
+
+const searchWithTags = async () => {
+  if (selectedTags.value.length === 0) {
+    filteredPosts.value = [];
+    return;
+  }
 
   tagFilterLoading.value = true;
   try {
-    const response = await postsApi.getAll({ tag, limit: 50 });
+    // Use POST API with JSON body for tag search
+    const response = await postsApi.searchByTags({ tags: selectedTags.value, limit: 50 });
     if (response.success && response.data) {
       filteredPosts.value = response.data.posts || [];
     }
   } catch (err) {
-    console.error('Failed to filter by tag:', err);
+    console.error('Failed to filter by tags:', err);
     filteredPosts.value = [];
   } finally {
     tagFilterLoading.value = false;
   }
-};
-
-const clearTagFilter = () => {
-  tagFilter.value = '';
-  filteredPosts.value = [];
 };
 
 const trackView = (postId) => {
@@ -582,10 +629,78 @@ onUnmounted(() => {
   font-size: 18px;
 }
 
+.tag-filter-section {
+  margin-bottom: 20px;
+}
+
+.tag-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+
 .tag-filter {
   margin-bottom: 20px;
   display: flex;
   gap: 8px;
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0 0;
+  align-items: center;
+}
+
+.selected-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.remove-tag {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.remove-tag:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.clear-all-tags {
+  padding: 6px 12px;
+  background: #f5f5f5;
+  color: #666;
+  border: none;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-all-tags:hover {
+  background: #e0e0e0;
+  color: #333;
 }
 
 .tag-input-wrapper {

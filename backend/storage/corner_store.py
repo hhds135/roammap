@@ -132,7 +132,7 @@ class CornerStore(BaseStore):
                 }
             }
         }
-        print(query)
+        
         return self.find(query, limit=limit)
     
     def search_corners_by_name(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:

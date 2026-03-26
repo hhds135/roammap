@@ -24,5 +24,10 @@ export const postsApi = {
   // Alias for list - get all posts with optional filters
   getAll(params) {
     return apiClient.get('/posts', { params });
+  },
+
+  // Search posts by tags using POST with JSON body
+  searchByTags(params) {
+    return apiClient.post('/posts/search', params);
   }
 };

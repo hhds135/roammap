@@ -467,16 +467,17 @@ def delete_post(post_id):
 def get_posts():
     """
     Get list of posts with pagination and filtering.
-    
+
     Query parameters:
         - user_id: Filter by user ID (optional)
         - visibility: Filter by visibility (optional)
-        - tag: Filter by tag (optional)
+        - tag: Filter by single tag (optional)
+        - tags: Filter by multiple tags (AND logic) (optional)
         - limit: Number of results per page (default 20, max 100)
         - skip: Number of results to skip (default 0)
         - sort_by: Sort field (default "created_at")
         - order: Sort order "asc" or "desc" (default "desc")
-        
+
     Returns:
         JSON with posts list and pagination info
     """
@@ -484,6 +485,7 @@ def get_posts():
     filter_user_id = request.args.get('user_id')
     filter_visibility = request.args.get('visibility')
     filter_tag = request.args.get('tag')
+    filter_tags = request.args.getlist('tags')  # Get all tags parameters (supports repeated params)
     
     try:
         limit = int(request.args.get('limit', 20))
@@ -518,10 +520,13 @@ def get_posts():
             return jsonify({'error': 'Invalid visibility value'}), 400
         query['visibility'] = filter_visibility
     
-    # Filter by tag (search within tags array)
-    if filter_tag:
-        query['tags'] = filter_tag  # MongoDB will match if the tag exists in the array
-    
+    # Filter by tags (support both single tag and multiple tags with AND logic)
+    if filter_tags:
+        # Multiple tags: use $all operator for AND logic with exact match
+        query['tags'] = {'$all': filter_tags}
+    elif filter_tag:
+        # Single tag: use exact match with $elemMatch to avoid partial matches
+        query['tags'] = {'$elemMatch': filter_tag}
     # Get current user for visibility filtering
     current_user_id = getattr(request, 'user_id', None)
     
@@ -546,6 +551,92 @@ def get_posts():
         if check_post_visibility(current_user_id, post, is_following_user):
             filtered_posts.append(expand_post_data(post))
     
+    return jsonify({
+        'success': True,
+        'data': {
+            'posts': filtered_posts,
+            'total': total,
+            'limit': limit,
+            'skip': skip
+        }
+    })
+
+
+@bp.route('/api/posts/search', methods=['POST'])
+@jwt_optional
+def search_posts():
+    """
+    Search posts by tags using POST with JSON body.
+
+    Request body:
+        - tags: Array of tags for AND filtering (optional)
+        - limit: Number of results per page (default 20, max 100)
+        - skip: Number of results to skip (default 0)
+
+    Returns:
+        JSON with posts list and pagination info
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body is required'}), 400
+
+    # Get parameters from JSON body
+    filter_tags = data.get('tags', [])
+
+    try:
+        limit = int(data.get('limit', 20))
+        limit = min(limit, 100)
+    except ValueError:
+        limit = 20
+
+    try:
+        skip = int(data.get('skip', 0))
+        if skip < 0:
+            skip = 0
+    except ValueError:
+        skip = 0
+
+    # Build query
+    query = {}
+
+    # Filter by tags with exact match (AND logic)
+    if filter_tags:
+        # Use $all operator for AND logic with exact match
+        query['tags'] = {'$all': filter_tags}
+    else:
+        return jsonify({
+            'success': True,
+            'data': {
+                'posts': [],
+                'total': 0,
+                'limit': limit,
+                'skip': skip
+            }
+        })
+
+    # Get current user for visibility filtering
+    current_user_id = getattr(request, 'user_id', None)
+
+    # Get posts
+    try:
+        posts = post_store.find(
+            query,
+            limit=limit,
+            skip=skip,
+            sort=[('created_at', -1)]
+        )
+
+        # Get total count
+        total = post_store.collection.count_documents(query)
+    except Exception as e:
+        return jsonify({'error': f'Failed to search posts: {str(e)}'}), 500
+
+    # Filter posts by visibility for current user
+    filtered_posts = []
+    for post in posts:
+        if check_post_visibility(current_user_id, post, is_following_user):
+            filtered_posts.append(expand_post_data(post))
+
     return jsonify({
         'success': True,
         'data': {
