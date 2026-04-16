@@ -191,7 +191,7 @@ L.Icon.Default.mergeOptions({
 
 const mapContainer = ref(null);
 const map = ref(null);
-const userLocation = ref({ lat: 31.2304, lng: 121.4737 }); // Default: Shanghai
+const userLocation = ref({ lat: 52.4862, lng: -1.8904 }); // Default: Shanghai
 const selectedMapLocation = ref(null); // Store user-selected location on map
 const nearbyCorners = ref([]);
 const selectedCorner = ref(null);
