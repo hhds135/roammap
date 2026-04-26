@@ -200,7 +200,7 @@ const viewProfile = (userId) => {
 .search-button {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+  background: linear-gradient(135deg, #667eea 0%, #4a6478 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -324,7 +324,7 @@ const viewProfile = (userId) => {
   height: 56px;
   min-width: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #4a6478 100%);
   color: white;
   display: flex;
   align-items: center;
