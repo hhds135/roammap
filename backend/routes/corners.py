@@ -88,21 +88,32 @@ def get_corners():
     except ValueError:
         limit = 100
 
+    try:
+        skip = int(request.args.get('skip', 0))
+        if skip < 0:
+            skip = 0
+    except ValueError:
+        skip = 0
+
     search = request.args.get('search')
     user_id = request.args.get('user_id')
 
     # Query corners
+    query = {}
     if search:
-        corners = corner_store.search_corners_by_name(search, limit=limit)
+        query = {'name': {'$regex': search, '$options': 'i'}}
+        corners = corner_store.find(query, limit=limit, skip=skip)
     elif user_id:
         # Get corners created by specific user
         try:
             user_id_obj = ObjectId(user_id)
-            corners = corner_store.find({'creator_id': user_id_obj}, limit=limit)
+            query = {'creator_id': user_id_obj}
+            corners = corner_store.find(query, limit=limit, skip=skip)
         except Exception:
             return jsonify({'error': 'Invalid user_id parameter'}), 400
     else:
-        corners = corner_store.get_all_corners(limit=limit)
+        query = {}
+        corners = corner_store.get_all_corners(limit=limit, skip=skip)
 
     # Convert ObjectIds to strings for JSON response
     result = []
@@ -121,7 +132,7 @@ def get_corners():
         'success': True,
         'data': {
             'corners': result,
-            'total': len(result)
+            'total': corner_store.count(query)
         }
     })
 
@@ -604,12 +615,11 @@ def get_corners_aggregate():
             }
         })
 
-    # Aggregate query for post statistics
+    # Aggregate query for post statistics across all posts that reference these corners.
     pipeline = [
         {
             "$match": {
-                "corner_ids": {"$in": corner_id_objs},
-                "visibility": {"$in": ["public", "followers"]}
+                "corner_ids": {"$in": corner_id_objs}
             }
         },
         {
@@ -636,8 +646,7 @@ def get_corners_aggregate():
     # Query recent posts
     try:
         recent_posts = list(post_store.collection.find({
-            "corner_ids": {"$in": corner_id_objs},
-            "visibility": {"$in": ["public", "followers"]}
+            "corner_ids": {"$in": corner_id_objs}
         }).sort("created_at", -1).limit(20))
     except Exception as e:
         recent_posts = []

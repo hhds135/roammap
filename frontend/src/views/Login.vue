@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-container">
       <div class="brand">
-        <h1>🗺️ Urban Canvas</h1>
+        <h1>🗺️ RoamMap</h1>
         <p>Discover hidden corners, share your stories</p>
       </div>
       <LoginForm />

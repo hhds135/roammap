@@ -152,7 +152,7 @@
               <h4 class="corner-name">{{ corner.name }}</h4>
               <p v-if="corner.description" class="corner-description">{{ corner.description }}</p>
               <div class="corner-meta">
-                <span class="corner-posts">{{ corner.postCount || 0 }} posts</span>
+                <span class="corner-posts">{{ corner.postCount ?? corner.post_count ?? 0 }} posts</span>
                 <button 
                   @click.stop="editCorner(corner)" 
                   class="edit-corner-btn"
@@ -363,7 +363,7 @@ const loadUserStats = async (userId) => {
       followsApi.getFollowing(userId, { limit: 1 }),
       followsApi.getFollowers(userId, { limit: 1 }),
       postsApi.list({ user_id: userId, limit: 1 }),
-      cornersApi.getAll({ limit: 1 })
+      cornersApi.getAll({ user_id: userId, limit: 1 })
     ]);
 
     if (following.success) {
@@ -420,7 +420,29 @@ const loadUserCorners = async (userId) => {
     });
     
     if (response.success && response.data?.corners) {
-      corners.value = response.data.corners;
+      const loadedCorners = response.data.corners;
+
+      if (loadedCorners.length === 0) {
+        corners.value = [];
+        return;
+      }
+
+      // Load per-corner post counts from the aggregate endpoint and merge them in.
+      const aggregateResponse = await cornersApi.aggregate(
+        loadedCorners.map(corner => corner._id)
+      );
+
+      const postCountMap = new Map();
+      if (aggregateResponse.success && aggregateResponse.data?.corners) {
+        aggregateResponse.data.corners.forEach(item => {
+          postCountMap.set(item.corner_id, item.post_count || 0);
+        });
+      }
+
+      corners.value = loadedCorners.map(corner => ({
+        ...corner,
+        postCount: postCountMap.get(corner._id) || 0
+      }));
     }
   } catch (err) {
     console.error('Failed to load user corners:', err);

@@ -377,6 +377,35 @@ class TestCornerCRUD:
         assert 'corners' in data['data']
         assert len(data['data']['corners']) >= 2
 
+    def test_get_corners_list_total_ignores_limit(self, api_client, registered_user, cleanup_geo_test_data):
+        """Test corners list total still reflects all matching corners when limit is applied."""
+        user_dict, token = registered_user
+        user_id = user_dict['id']
+
+        for idx in range(2):
+            response, data = api_client.post_json(
+                '/api/corners',
+                data={
+                    'name': f'Profile Corner {idx} Unique',
+                    'description': f'Profile corner {idx}',
+                    'latitude': 31.2304 + (idx * 0.001),
+                    'longitude': 121.4737 + (idx * 0.001),
+                    'address': f'Address {idx}'
+                },
+                auth_token=token
+            )
+            assert response.status_code == 201
+
+        response, data = api_client.get_json(
+            '/api/corners',
+            query_params={'user_id': user_id, 'limit': 1}
+        )
+
+        assert response.status_code == 200
+        assert data['success'] is True
+        assert len(data['data']['corners']) == 1
+        assert data['data']['total'] >= 2
+
 
 class TestCornersAggregateAPI:
     """Test corners aggregate API functionality."""

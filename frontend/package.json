@@ -1,7 +1,7 @@
 {
-  "name": "urban-canvas-frontend",
+  "name": "roammap-frontend",
   "version": "1.0.0",
-  "description": "Urban Canvas - Interactive map application frontend",
+  "description": "RoamMap - Interactive map application frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",
