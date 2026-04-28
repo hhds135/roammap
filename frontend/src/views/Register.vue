@@ -2,7 +2,7 @@
   <div class="register-page">
     <div class="register-container">
       <div class="brand">
-        <h1>🗺️ RoamMap</h1>
+        <h1>🗺️ Urban Canvas</h1>
         <p>Discover hidden corners, share your stories</p>
       </div>
       <RegisterForm />

@@ -191,7 +191,7 @@ L.Icon.Default.mergeOptions({
 
 const mapContainer = ref(null);
 const map = ref(null);
-const userLocation = ref({ lat: 31.2304, lng: 121.4737 }); // Default: Shanghai
+const userLocation = ref({ lat: 52.4778, lng: -1.8986 }); // Default: Birmingham New Street // Default: Shanghai
 const selectedMapLocation = ref(null); // Store user-selected location on map
 const nearbyCorners = ref([]);
 const selectedCorner = ref(null);
@@ -274,45 +274,34 @@ const initMap = () => {
   // Add moveend event to reload corners when map is moved/zoomed
   map.value.on('moveend', handleMapMoveEnd);
 
-  // Load all corners so the map shows global coverage.
-  loadAllCorners();
+  // Load nearby corners
+  loadNearbyCorners();
 };
 
-// Handle map move/zoom end - keep the current global set of corners.
+// Handle map move/zoom end - reload corners based on current viewport
 const handleMapMoveEnd = () => {
+  // Don't reload if a route is being displayed
   if (displayedRoute.value) return;
+  
+  // Get current map center
+  const center = map.value.getCenter();
+  loadCornersAtLocation(center.lat, center.lng);
 };
 
-// Load all corners in pages so the map can show global coverage.
-const loadAllCorners = async () => {
+// Load corners at a specific location
+const loadCornersAtLocation = async (lat, lng) => {
   try {
-    const allCorners = [];
-    const pageSize = 100;
-    let skip = 0;
-    let total = null;
+    const response = await cornersApi.getNearby({
+      lat: lat,
+      lng: lng,
+      radius: 10000, // 10km
+      limit: 50
+    });
 
-    while (total === null || skip < total) {
-      const response = await cornersApi.getAll({
-        limit: pageSize,
-        skip
-      });
-
-      if (!response.success || !response.data?.corners) {
-        break;
-      }
-
-      const batch = response.data.corners;
-      allCorners.push(...batch);
-      total = response.data.total ?? allCorners.length;
-      skip += batch.length;
-
-      if (batch.length < pageSize) {
-        break;
-      }
+    if (response.success && response.data?.corners) {
+      nearbyCorners.value = response.data.corners;
+      displayCorners(response.data.corners);
     }
-
-    nearbyCorners.value = allCorners;
-    displayCorners(allCorners);
   } catch (err) {
     console.error('Failed to load corners:', err);
   }
@@ -359,27 +348,6 @@ const getUserLocation = () => {
   }
 };
 
-// Read the browser's current geolocation once, without falling back to a fixed city.
-const getBrowserLocation = () => {
-  return new Promise((resolve) => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        () => {
-          resolve(null);
-        }
-      );
-    } else {
-      resolve(null);
-    }
-  });
-};
-
 // Map click handler for selecting location
 const handleMapClick = (e) => {
   const { lat, lng } = e.latlng;
@@ -413,7 +381,7 @@ const handleMapClick = (e) => {
 
 // Load nearby corners based on user location
 const loadNearbyCorners = async () => {
-  await loadAllCorners();
+  await loadCornersAtLocation(userLocation.value.lat, userLocation.value.lng);
 };
 
 // Display corners on map
@@ -720,20 +688,8 @@ const displayCollectionRoute = async (route, loop = true) => {
 
   if (!route.corners || route.corners.length === 0) return;
 
-  // Always use the browser's current location as the route origin.
-  const currentLocation = await getBrowserLocation();
-  if (!currentLocation) {
-    alert('无法获取浏览器定位，请允许定位权限后再规划路线');
-    return;
-  }
-
-  // Store corners for route display only after location is confirmed.
+  // Store corners for route display
   currentRouteCorners.value = route;
-
-  userLocation.value = currentLocation;
-  if (map.value) {
-    updateUserMarker();
-  }
 
   // Determine if route should include start point
   // - If only 1 corner: always include start (current location -> corner)
@@ -745,7 +701,7 @@ const displayCollectionRoute = async (route, loop = true) => {
 
   if (shouldIncludeStart) {
     // Add user location as start
-    coordinates.push([currentLocation.lng, currentLocation.lat]);
+    coordinates.push([userLocation.value.lng, userLocation.value.lat]);
   }
 
   // Add corners in order
@@ -755,7 +711,7 @@ const displayCollectionRoute = async (route, loop = true) => {
 
   if (loop) {
     // Add user location as end only if loop is enabled (to complete the loop)
-    coordinates.push([currentLocation.lng, currentLocation.lat]);
+    coordinates.push([userLocation.value.lng, userLocation.value.lat]);
   }
 
   // Try to fetch real route from OSRM
@@ -771,7 +727,7 @@ const displayCollectionRoute = async (route, loop = true) => {
 
     if (shouldIncludeStart) {
       // Add user location
-      routeCoordinates.push([currentLocation.lat, currentLocation.lng]);
+      routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
     }
 
     // Add corners
@@ -782,7 +738,7 @@ const displayCollectionRoute = async (route, loop = true) => {
 
     if (loop) {
       // Add user location again to complete the loop only if loop is enabled
-      routeCoordinates.push([currentLocation.lat, currentLocation.lng]);
+      routeCoordinates.push([userLocation.value.lat, userLocation.value.lng]);
     }
   }
 
@@ -803,7 +759,7 @@ const displayCollectionRoute = async (route, loop = true) => {
       iconSize: [30, 30],
       iconAnchor: [15, 15]
     });
-    const startMarker = markRaw(L.marker([currentLocation.lat, currentLocation.lng], { icon: startIcon }).addTo(map.value));
+    const startMarker = markRaw(L.marker([userLocation.value.lat, userLocation.value.lng], { icon: startIcon }).addTo(map.value));
     startMarker.bindPopup('<strong>Your Location</strong>');
     routeMarkers.push(startMarker);
   }

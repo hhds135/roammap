@@ -151,18 +151,17 @@ class CornerStore(BaseStore):
             limit=limit
         )
     
-    def get_all_corners(self, limit: int = 100, skip: int = 0) -> List[Dict[str, Any]]:
+    def get_all_corners(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get all corners.
 
         Args:
             limit: Maximum number of results
-            skip: Number of results to skip
 
         Returns:
             List of corners
         """
-        return self.find({}, limit=limit, skip=skip)
+        return self.find({}, limit=limit)
 
     def calculate_distance(self, lat1: float, lng1: float,
                            lat2: float, lng2: float) -> float:

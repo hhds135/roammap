@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-container">
       <div class="brand">
-        <h1> RoamMap</h1>
+        <h1>🗺️ Urban Canvas</h1>
         <p>Discover hidden corners, share your stories</p>
       </div>
       <LoginForm />
@@ -17,7 +17,7 @@ import LoginForm from '../components/Auth/LoginForm.vue';
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #4a6478 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
   justify-content: center;

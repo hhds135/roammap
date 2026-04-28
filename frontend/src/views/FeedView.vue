@@ -620,7 +620,7 @@ onUnmounted(() => {
 }
 
 .toggle-button.active {
-  background: linear-gradient(135deg, #667eea 0%, #4a6478 100%);
+  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
   color: white;
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
 }
@@ -659,7 +659,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #4a6478 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-radius: 20px;
   font-size: 13px;
@@ -751,7 +751,7 @@ onUnmounted(() => {
 
 .filter-button {
   padding: 12px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 10px;
